@@ -4,7 +4,9 @@ import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/providers/settings_provider.dart';
 import '../auth/providers/auth_provider.dart';
+
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -15,7 +17,6 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   bool _notif = true;
   String _ttsSpeed = "1.0×";
-  String _lang = "vi";
   bool _showLogoutConfirm = false;
 
   final Color _teal = const Color(0xFF2DD4BF);
@@ -25,11 +26,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final Color _red = const Color(0xFFF87171);
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AuthProvider>().fetchCurrentUser();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = Theme.of(context).scaffoldBackgroundColor;
+    
     return Stack(
       children: [
         Scaffold(
-          backgroundColor: AppTheme.background,
+          backgroundColor: bgColor,
           body: SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.only(bottom: 24),
@@ -56,11 +68,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
       child: Text(
-        _lang == 'vi' ? 'Hồ sơ' : 'Profile',
+        'Hồ sơ',
         style: GoogleFonts.outfit(
           fontWeight: FontWeight.w800,
           fontSize: 20,
-          color: const Color(0xFFF3F4F6), // AppTheme.textPrimary
+          color: Theme.of(context).colorScheme.onBackground,
         ),
       ),
     );
@@ -69,111 +81,58 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildUserInfoCard() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: _KCard(
-        child: Row(
-          children: [
-            Container(
-              width: 54,
-              height: 54,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: _teal.withOpacity(0.18),
-                border: Border.all(color: _teal.withOpacity(0.40), width: 2),
-              ),
-              alignment: Alignment.center,
-              child: const Text('👨‍💻', style: TextStyle(fontSize: 24)),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Nguyễn Văn A',
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    'nguyen.van.a@gmail.com',
-                    style: GoogleFonts.jetBrainsMono(
-                      fontSize: 10,
-                      color: AppTheme.textPrimary.withOpacity(0.45),
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      _Badge(text: 'Beginner KO', color: _teal),
-                      const SizedBox(width: 6),
-                      _Badge(text: '🇻🇳 Việt', color: _purple),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+      child: Consumer<AuthProvider>(
+        builder: (context, authProvider, child) {
+          final user = authProvider.user;
+          final displayName = user?['displayName'] ?? 'Người dùng';
+          final email = user?['email'] ?? 'Chưa cập nhật email';
+          final level = user?['koreanLevel'] ?? 'Beginner';
+          final language = user?['nativeLanguage'] ?? 'vi';
+          
+          final textColor = Theme.of(context).colorScheme.onBackground;
 
-  Widget _buildStatsGrid() {
-    final stats = [
-      {'label': _lang == 'vi' ? 'Phút học' : 'Study mins', 'value': '1,250', 'icon': LucideIcons.clock, 'color': _teal},
-      {'label': _lang == 'vi' ? 'Thẻ đã ôn' : 'Cards reviewed', 'value': '3,400', 'icon': LucideIcons.brain, 'color': _purple},
-      {'label': 'Roleplay', 'value': '45', 'icon': LucideIcons.messageSquare, 'color': _green},
-      {'label': 'Video', 'value': '23', 'icon': LucideIcons.play, 'color': _orange},
-    ];
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: GridView.count(
-        crossAxisCount: 2,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        childAspectRatio: 2.3,
-        children: stats.map((s) {
-          final color = s['color'] as Color;
           return _KCard(
-            padding: const EdgeInsets.all(12),
             child: Row(
               children: [
                 Container(
-                  width: 34,
-                  height: 34,
+                  width: 54,
+                  height: 54,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(10),
-                    color: color.withOpacity(0.18),
+                    shape: BoxShape.circle,
+                    color: _teal.withOpacity(0.18),
+                    border: Border.all(color: _teal.withOpacity(0.40), width: 2),
                   ),
                   alignment: Alignment.center,
-                  child: Icon(s['icon'] as IconData, size: 14, color: color),
+                  child: const Text('👨‍💻', style: TextStyle(fontSize: 24)),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(
-                        s['value'] as String,
+                        displayName,
                         style: GoogleFonts.outfit(
                           fontWeight: FontWeight.w700,
-                          fontSize: 17,
-                          color: color,
+                          fontSize: 16,
+                          color: textColor,
                         ),
                       ),
+                      const SizedBox(height: 3),
                       Text(
-                        s['label'] as String,
+                        email,
                         style: GoogleFonts.jetBrainsMono(
-                          fontSize: 9,
-                          color: AppTheme.textPrimary.withOpacity(0.40),
+                          fontSize: 10,
+                          color: textColor.withOpacity(0.45),
                         ),
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          _Badge(text: level, color: _teal),
+                          const SizedBox(width: 6),
+                          _Badge(text: language == 'vi' ? '🇻🇳 Việt' : '🇺🇸 English', color: _purple),
+                        ],
                       ),
                     ],
                   ),
@@ -181,228 +140,295 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
           );
-        }).toList(),
+        },
+      ),
+    );
+  }
+
+
+  Widget _buildStatsGrid() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Consumer<AuthProvider>(
+        builder: (context, authProvider, child) {
+          final user = authProvider.user;
+          final statsObj = user?['stats'] ?? {};
+          final studyMins = statsObj['totalStudyMinutes'] ?? 0;
+          final cardsReviewed = statsObj['totalCardsReviewed'] ?? 0;
+          final roleplaySessions = statsObj['totalRoleplaySessions'] ?? 0;
+          final videosWatched = statsObj['totalVideosWatched'] ?? 0;
+
+          final textColor = Theme.of(context).colorScheme.onBackground;
+
+          final stats = [
+            {'label': 'Phút học', 'value': studyMins.toString(), 'icon': LucideIcons.clock, 'color': _teal},
+            {'label': 'Thẻ đã ôn', 'value': cardsReviewed.toString(), 'icon': LucideIcons.brain, 'color': _purple},
+            {'label': 'Roleplay', 'value': roleplaySessions.toString(), 'icon': LucideIcons.messageSquare, 'color': _green},
+            {'label': 'Video', 'value': videosWatched.toString(), 'icon': LucideIcons.play, 'color': _orange},
+          ];
+
+          return GridView.count(
+            crossAxisCount: 2,
+            crossAxisSpacing: 8,
+            mainAxisSpacing: 8,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            childAspectRatio: 2.3,
+            children: stats.map((s) {
+              final color = s['color'] as Color;
+              return _KCard(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(10),
+                        color: color.withOpacity(0.18),
+                      ),
+                      alignment: Alignment.center,
+                      child: Icon(s['icon'] as IconData, size: 14, color: color),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(
+                            s['value'] as String,
+                            style: GoogleFonts.outfit(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 17,
+                              color: color,
+                            ),
+                          ),
+                          Text(
+                            s['label'] as String,
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 9,
+                              color: textColor.withOpacity(0.40),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          );
+        }
       ),
     );
   }
 
   Widget _buildSettingsSection() {
+    final textColor = Theme.of(context).colorScheme.onBackground;
+    
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: Text(
-              _lang == 'vi' ? 'CÀI ĐẶT' : 'SETTINGS',
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 9,
-                letterSpacing: 1,
-                color: AppTheme.textPrimary.withOpacity(0.40),
-              ),
-            ),
-          ),
-          _KCard(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            margin: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(LucideIcons.bell, size: 15, color: AppTheme.textPrimary.withOpacity(0.5)),
-                    const SizedBox(width: 10),
-                    Text(
-                      _lang == 'vi' ? 'Thông báo' : 'Notifications',
-                      style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textPrimary),
-                    ),
-                  ],
+      child: Consumer<SettingsProvider>(
+        builder: (context, settings, child) {
+          final isDark = settings.themeMode == ThemeMode.dark;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text(
+                  'CÀI ĐẶT',
+                  style: GoogleFonts.jetBrainsMono(
+                    fontSize: 9,
+                    letterSpacing: 1,
+                    color: textColor.withOpacity(0.40),
+                  ),
                 ),
-                GestureDetector(
-                  onTap: () => setState(() => _notif = !_notif),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 42,
-                    height: 24,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      color: _notif ? _teal : AppTheme.textPrimary.withOpacity(0.2),
-                    ),
-                    child: Stack(
+              ),
+              _KCard(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                margin: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
                       children: [
-                        AnimatedPositioned(
-                          duration: const Duration(milliseconds: 200),
-                          curve: Curves.easeInOut,
-                          top: 3,
-                          left: _notif ? 21 : 3,
-                          child: Container(
-                            width: 18,
-                            height: 18,
-                            decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: Colors.white,
-                            ),
-                          ),
+                        Icon(LucideIcons.bell, size: 15, color: textColor.withOpacity(0.5)),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Thông báo',
+                          style: GoogleFonts.inter(fontSize: 13, color: textColor),
                         ),
                       ],
                     ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _KCard(
-            padding: const EdgeInsets.all(12),
-            margin: const EdgeInsets.only(bottom: 8),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Icon(LucideIcons.volume2, size: 15, color: AppTheme.textPrimary.withOpacity(0.5)),
-                    const SizedBox(width: 10),
-                    Text(
-                      _lang == 'vi' ? 'Tốc độ TTS' : 'TTS Speed',
-                      style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textPrimary),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: ["0.75×", "1.0×", "1.25×", "1.5×"].map((s) {
-                    final isSelected = _ttsSpeed == s;
-                    return Expanded(
-                      child: GestureDetector(
-                        onTap: () => setState(() => _ttsSpeed = s),
-                        child: Container(
-                          margin: const EdgeInsets.symmetric(horizontal: 3),
-                          padding: const EdgeInsets.symmetric(vertical: 5),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(8),
-                            color: isSelected ? _teal : AppTheme.textPrimary.withOpacity(0.1),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            s,
-                            style: GoogleFonts.jetBrainsMono(
-                              fontSize: 10,
-                              color: isSelected ? Colors.black : AppTheme.textPrimary.withOpacity(0.5),
+                    GestureDetector(
+                      onTap: () => setState(() => _notif = !_notif),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: 42,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: _notif ? _teal : textColor.withOpacity(0.2),
+                        ),
+                        child: Stack(
+                          children: [
+                            AnimatedPositioned(
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeInOut,
+                              top: 3,
+                              left: _notif ? 21 : 3,
+                              child: Container(
+                                width: 18,
+                                height: 18,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white,
+                                ),
+                              ),
                             ),
-                          ),
+                          ],
                         ),
                       ),
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
-          ),
-          _KCard(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            margin: const EdgeInsets.only(bottom: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(LucideIcons.globe, size: 15, color: AppTheme.textPrimary.withOpacity(0.5)),
-                    const SizedBox(width: 10),
-                    Text(
-                      _lang == 'vi' ? 'Ngôn ngữ UI' : 'UI Language',
-                      style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textPrimary),
                     ),
                   ],
                 ),
-                GestureDetector(
-                  onTap: () => setState(() => _lang = _lang == 'vi' ? 'en' : 'vi'),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: _teal.withOpacity(0.4)),
-                      color: _teal.withOpacity(0.12),
+              ),
+              _KCard(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 8),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Icon(LucideIcons.volume2, size: 15, color: textColor.withOpacity(0.5)),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Tốc độ TTS',
+                          style: GoogleFonts.inter(fontSize: 13, color: textColor),
+                        ),
+                      ],
                     ),
-                    child: Text(
-                      _lang == 'vi' ? 'Tiếng Việt' : 'English',
-                      style: GoogleFonts.jetBrainsMono(
-                        fontSize: 12,
-                        color: _teal,
+                    const SizedBox(height: 10),
+                    Row(
+                      children: ["0.75×", "1.0×", "1.25×", "1.5×"].map((s) {
+                        final isSelected = _ttsSpeed == s;
+                        return Expanded(
+                          child: GestureDetector(
+                            onTap: () => setState(() => _ttsSpeed = s),
+                            child: Container(
+                              margin: const EdgeInsets.symmetric(horizontal: 3),
+                              padding: const EdgeInsets.symmetric(vertical: 5),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                color: isSelected ? _teal : textColor.withOpacity(0.1),
+                              ),
+                              alignment: Alignment.center,
+                              child: Text(
+                                s,
+                                style: GoogleFonts.jetBrainsMono(
+                                  fontSize: 10,
+                                  color: isSelected ? Colors.black : textColor.withOpacity(0.5),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                    ),
+                  ],
+                ),
+              ),
+
+              _KCard(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(LucideIcons.moon, size: 15, color: textColor.withOpacity(0.5)),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Giao diện tối',
+                          style: GoogleFonts.inter(fontSize: 13, color: textColor),
+                        ),
+                      ],
+                    ),
+                    GestureDetector(
+                      onTap: () => settings.toggleTheme(),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: 42,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: isDark ? _teal : textColor.withOpacity(0.2),
+                        ),
+                        child: Stack(
+                          children: [
+                            AnimatedPositioned(
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeInOut,
+                              top: 3,
+                              left: isDark ? 21 : 3,
+                              child: Container(
+                                width: 18,
+                                height: 18,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          _KCard(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    Icon(LucideIcons.moon, size: 15, color: AppTheme.textPrimary.withOpacity(0.5)),
-                    const SizedBox(width: 10),
-                    Text(
-                      _lang == 'vi' ? 'Giao diện tối' : 'Dark Mode',
-                      style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textPrimary),
-                    ),
                   ],
                 ),
-                Container(
-                  width: 42,
-                  height: 24,
+              ),
+              const SizedBox(height: 12),
+              GestureDetector(
+                onTap: () => setState(() => _showLogoutConfirm = true),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(vertical: 13),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
-                    color: _teal,
+                    border: Border.all(color: _red.withOpacity(0.4)),
+                    color: _red.withOpacity(0.1),
                   ),
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.only(right: 3),
-                  child: Container(
-                    width: 18,
-                    height: 18,
-                    decoration: const BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: Colors.black,
-                    ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(LucideIcons.logOut, size: 15, color: _red),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Đăng xuất',
+                        style: GoogleFonts.outfit(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 14,
+                          color: _red,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          GestureDetector(
-            onTap: () => setState(() => _showLogoutConfirm = true),
-            child: Container(
-              padding: const EdgeInsets.symmetric(vertical: 13),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: _red.withOpacity(0.4)),
-                color: _red.withOpacity(0.1),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(LucideIcons.logOut, size: 15, color: _red),
-                  const SizedBox(width: 8),
-                  Text(
-                    _lang == 'vi' ? 'Đăng xuất' : 'Log out',
-                    style: GoogleFonts.outfit(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 14,
-                      color: _red,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+            ],
+          );
+        }
       ),
     );
   }
 
   Widget _buildLogoutConfirmModal() {
+    final textColor = Theme.of(context).colorScheme.onBackground;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final modalBg = isDark ? const Color(0xFF1E1E24) : Colors.white;
+
     return Container(
       color: Colors.black.withOpacity(0.65),
       alignment: Alignment.bottomCenter,
@@ -412,9 +438,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           width: double.infinity,
           padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
           decoration: BoxDecoration(
-            color: const Color(0xFF1E1E24), // Approximate oklch(0.13 0.025 250)
+            color: modalBg,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1))),
+            border: Border(top: BorderSide(color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05))),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -425,7 +451,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 margin: const EdgeInsets.only(bottom: 20),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(2),
-                  color: AppTheme.textPrimary.withOpacity(0.2),
+                  color: textColor.withOpacity(0.2),
                 ),
               ),
               Container(
@@ -441,22 +467,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Icon(LucideIcons.logOut, size: 22, color: _red),
               ),
               Text(
-                _lang == 'vi' ? 'Xác nhận đăng xuất' : 'Confirm logout',
+                'Xác nhận đăng xuất',
                 style: GoogleFonts.outfit(
                   fontWeight: FontWeight.w700,
                   fontSize: 17,
-                  color: AppTheme.textPrimary,
+                  color: textColor,
                 ),
               ),
               const SizedBox(height: 6),
               Text(
-                _lang == 'vi'
-                    ? 'Bạn sẽ cần đăng nhập lại để tiếp tục học.'
-                    : "You'll need to sign in again to continue.",
+                'Bạn sẽ cần đăng nhập lại để tiếp tục học.',
                 textAlign: TextAlign.center,
                 style: GoogleFonts.inter(
                   fontSize: 13,
-                  color: AppTheme.textPrimary.withOpacity(0.5),
+                  color: textColor.withOpacity(0.5),
                 ),
               ),
               const SizedBox(height: 20),
@@ -469,16 +493,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         padding: const EdgeInsets.symmetric(vertical: 13),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
-                          color: AppTheme.textPrimary.withOpacity(0.1),
-                          border: Border.all(color: AppTheme.textPrimary.withOpacity(0.15)),
+                          color: textColor.withOpacity(0.1),
+                          border: Border.all(color: textColor.withOpacity(0.15)),
                         ),
                         alignment: Alignment.center,
                         child: Text(
-                          _lang == 'vi' ? 'Huỷ' : 'Cancel',
+                          'Hủy',
                           style: GoogleFonts.outfit(
                             fontWeight: FontWeight.w600,
                             fontSize: 14,
-                            color: AppTheme.textPrimary.withOpacity(0.75),
+                            color: textColor.withOpacity(0.75),
                           ),
                         ),
                       ),
@@ -502,7 +526,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         alignment: Alignment.center,
                         child: Text(
-                          _lang == 'vi' ? 'Đăng xuất' : 'Log out',
+                          'Đăng xuất',
                           style: GoogleFonts.outfit(
                             fontWeight: FontWeight.w700,
                             fontSize: 14,
@@ -539,9 +563,9 @@ class _KCard extends StatelessWidget {
       margin: margin,
       padding: padding,
       decoration: BoxDecoration(
-        color: AppTheme.surface,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Theme.of(context).brightness == Brightness.dark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
       ),
       child: child,
     );

@@ -106,11 +106,9 @@ class AuthProvider extends ChangeNotifier {
       await prefs.setBool('has_completed_onboarding', true);
       
       if (_user != null) {
-        if (_user!['profile'] == null) {
-          _user!['profile'] = {};
-        }
-        _user!['profile']['learningGoals'] = goals;
-        _user!['profile']['koreanLevel'] = level;
+        _user!['hasCompletedOnboarding'] = true;
+        _user!['learningGoals'] = goals;
+        _user!['koreanLevel'] = level;
       }
     } finally {
       _isLoading = false;
@@ -119,11 +117,23 @@ class AuthProvider extends ChangeNotifier {
   }
 
   bool get hasCompletedOnboarding {
-    if (_user != null && _user!['profile'] != null) {
-      final goals = _user!['profile']['learningGoals'];
-      return goals != null && (goals as List).isNotEmpty;
+    if (_user != null) {
+      return _user!['hasCompletedOnboarding'] == true;
     }
     return false;
+  }
+
+  Future<void> fetchCurrentUser() async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      _user = await _authService.getCurrentUser();
+    } catch (e) {
+      debugPrint('Error fetching user profile: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> logout() async {

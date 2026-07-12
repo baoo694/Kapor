@@ -3,13 +3,15 @@ import 'package:provider/provider.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 import 'features/auth/providers/auth_provider.dart';
+import 'core/providers/settings_provider.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        Provider<bool>.value(value: true),
+        ChangeNotifierProvider(create: (_) => SettingsProvider()),
       ],
       child: const KaporApp(),
     ),
@@ -21,12 +23,17 @@ class KaporApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp.router(
-      title: 'Kapor',
-      debugShowCheckedModeBanner: false,
-      themeMode: ThemeMode.dark, // Force dark mode as per aesthetic stance
-      darkTheme: AppTheme.darkTheme,
-      routerConfig: appRouter,
+    return Consumer<SettingsProvider>(
+      builder: (context, settingsProvider, child) {
+        return MaterialApp.router(
+          title: 'Kapor',
+          debugShowCheckedModeBanner: false,
+          themeMode: settingsProvider.themeMode,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          routerConfig: appRouter,
+        );
+      },
     );
   }
 }

@@ -77,4 +77,19 @@ class AuthService {
       throw 'Lỗi kết nối máy chủ';
     }
   }
+
+  Future<Map<String, dynamic>> getCurrentUser() async {
+    try {
+      final response = await _dio.get('/users/me');
+      if (response.data['success'] == true) {
+        return response.data['data'];
+      }
+      throw response.data['message'] ?? 'Lỗi tải thông tin người dùng';
+    } on DioException catch (e) {
+      if (e.response != null && e.response?.data != null) {
+        throw e.response!.data['message'] ?? e.response!.data['error'] ?? 'Lỗi tải thông tin người dùng';
+      }
+      throw 'Lỗi kết nối máy chủ';
+    }
+  }
 }

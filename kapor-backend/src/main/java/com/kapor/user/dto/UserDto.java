@@ -24,6 +24,7 @@ public class UserDto {
     private boolean hasCompletedOnboarding;
     private User.Streak streak;
     private User.UserSettings settings;
+    private User.UserStats stats;
     private Set<String> roles;
 
     public static UserDto fromEntity(User user) {
@@ -39,6 +40,7 @@ public class UserDto {
                 .hasCompletedOnboarding(user.getProfile() != null && user.getProfile().getLearningGoals() != null && !user.getProfile().getLearningGoals().isEmpty())
                 .streak(user.getStreak())
                 .settings(user.getSettings())
+                .stats(user.getStats())
                 .roles(user.getRoles())
                 .build();
     }

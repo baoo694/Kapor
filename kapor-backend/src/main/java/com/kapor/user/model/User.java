@@ -92,8 +92,6 @@ public class User {
         @Builder.Default
         private String theme = "dark";     // dark | light | system
         @Builder.Default
-        private String locale = "vi";      // vi | en
-        @Builder.Default
         private boolean notificationsEnabled = true;
         private String reminderTime;       // "09:00"
     }

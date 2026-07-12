@@ -61,4 +61,57 @@ class AppTheme {
       ),
     );
   }
+  static ThemeData get lightTheme {
+    return ThemeData(
+      brightness: Brightness.light,
+      scaffoldBackgroundColor: const Color(0xFFF9FAFB),
+      primaryColor: primary,
+      colorScheme: const ColorScheme.light(
+        primary: primary,
+        secondary: secondary,
+        surface: Colors.white,
+        background: Color(0xFFF9FAFB),
+        onBackground: Color(0xFF111827),
+        onSurface: Color(0xFF111827),
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: const Color(0xFFF9FAFB),
+        elevation: 0,
+        centerTitle: true,
+        iconTheme: const IconThemeData(color: Color(0xFF111827)),
+        titleTextStyle: GoogleFonts.outfit(
+          color: const Color(0xFF111827),
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+        backgroundColor: Colors.white,
+        selectedItemColor: primary,
+        unselectedItemColor: Color(0xFF6B7280),
+        type: BottomNavigationBarType.fixed,
+        elevation: 8,
+      ),
+      cardTheme: CardThemeData(
+        color: Colors.white,
+        elevation: 2,
+        shadowColor: Colors.black.withOpacity(0.05),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.black.withOpacity(0.05)),
+        ),
+      ),
+      textTheme: TextTheme(
+        displayLarge: GoogleFonts.outfit(color: const Color(0xFF111827), fontWeight: FontWeight.bold),
+        displayMedium: GoogleFonts.outfit(color: const Color(0xFF111827), fontWeight: FontWeight.bold),
+        displaySmall: GoogleFonts.outfit(color: const Color(0xFF111827), fontWeight: FontWeight.bold),
+        headlineMedium: GoogleFonts.outfit(color: const Color(0xFF111827), fontWeight: FontWeight.w600),
+        titleLarge: GoogleFonts.outfit(color: const Color(0xFF111827), fontWeight: FontWeight.w600),
+        titleMedium: GoogleFonts.inter(color: const Color(0xFF111827), fontWeight: FontWeight.w500),
+        bodyLarge: GoogleFonts.inter(color: const Color(0xFF111827)),
+        bodyMedium: GoogleFonts.inter(color: const Color(0xFF111827)),
+        labelLarge: GoogleFonts.jetBrainsMono(color: const Color(0xFF111827), fontWeight: FontWeight.w500),
+      ),
+    );
+  }
 }
