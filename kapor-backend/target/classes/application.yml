@@ -1,0 +1,84 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: kapor-backend
+
+  # MongoDB
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/kapor}
+      auto-index-creation: false
+
+    # Redis
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+
+  # Mail
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: qgb694@gmail.com
+    password: bmojpqoeavqvjojb
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+  # Jackson
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+  # Virtual Threads (Java 21)
+  threads:
+    virtual:
+      enabled: true
+
+# JWT Configuration
+jwt:
+  secret: ${JWT_SECRET:kapor-dev-secret-key-change-in-production-min-256-bits-long}
+  access-token-expiration-ms: 900000 # 15 minutes
+  refresh-token-expiration-ms: 2592000000 # 30 days
+
+# Google OAuth2
+google:
+  client-id: ${GOOGLE_CLIENT_ID:your-google-client-id}
+
+# Gemini AI
+gemini:
+  api-key: ${GEMINI_API_KEY:your-gemini-api-key}
+  model-name: gemini-2.5-pro
+
+# MinIO (Object Storage)
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin}
+  bucket-name: ${MINIO_BUCKET:kapor}
+
+# NLP Microservice
+nlp:
+  service-url: ${NLP_SERVICE_URL:http://localhost:8001}
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+
+# Logging
+logging:
+  level:
+    com.kapor: DEBUG
+    org.springframework.security: INFO
+    org.springframework.data.mongodb: INFO

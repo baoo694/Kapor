@@ -1,0 +1,70 @@
+server:
+  port: 0  # Random port for tests
+
+spring:
+  application:
+    name: kapor-backend-test
+
+  # Embedded MongoDB (Flapdoodle)
+  data:
+    mongodb:
+      auto-index-creation: true
+
+de:
+  flapdoodle:
+    mongodb:
+      embedded:
+        version: 7.0.0
+
+    # Disable Redis for tests
+    redis:
+      host: localhost
+      port: 6379
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+
+  threads:
+    virtual:
+      enabled: false
+
+  # Disable auto-configuration for Redis in tests
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
+      - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
+
+# JWT Configuration for tests
+jwt:
+  secret: dGVzdC1zZWNyZXQta2V5LWZvci1rYXBvci1iYWNrZW5kLXRlc3RzLW11c3QtYmUtYXQtbGVhc3QtMjU2LWJpdHM=
+  access-token-expiration-ms: 900000
+  refresh-token-expiration-ms: 2592000000
+
+# Google OAuth2
+google:
+  client-id: test-google-client-id
+
+# Gemini AI
+gemini:
+  api-key: test-gemini-api-key
+  model-name: gemini-2.5-pro
+
+# MinIO (disabled for tests)
+minio:
+  endpoint: http://localhost:9000
+  access-key: minioadmin
+  secret-key: minioadmin
+  bucket-name: kapor-test
+
+# NLP Microservice
+nlp:
+  service-url: http://localhost:8001
+
+# Logging
+logging:
+  level:
+    com.kapor: DEBUG
+    org.springframework.security: WARN
+    de.flapdoodle: WARN
