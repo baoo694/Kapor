@@ -12,10 +12,7 @@ class AuthService {
       });
       return response.data;
     } on DioException catch (e) {
-      if (e.response != null && e.response?.data != null) {
-        throw e.response!.data['message'] ?? e.response!.data['error'] ?? 'Lỗi đăng nhập';
-      }
-      throw 'Lỗi kết nối máy chủ';
+      throw _extractErrorMessage(e, 'Lỗi đăng nhập');
     }
   }
 
@@ -28,10 +25,7 @@ class AuthService {
       });
       return response.data;
     } on DioException catch (e) {
-      if (e.response != null && e.response?.data != null) {
-        throw e.response!.data['message'] ?? e.response!.data['error'] ?? 'Lỗi đăng ký';
-      }
-      throw 'Lỗi kết nối máy chủ';
+      throw _extractErrorMessage(e, 'Lỗi đăng ký');
     }
   }
 
@@ -41,10 +35,7 @@ class AuthService {
         'email': email,
       });
     } on DioException catch (e) {
-      if (e.response != null && e.response?.data != null) {
-        throw e.response!.data['message'] ?? e.response!.data['error'] ?? 'Lỗi gửi yêu cầu';
-      }
-      throw 'Lỗi kết nối máy chủ';
+      throw _extractErrorMessage(e, 'Lỗi gửi yêu cầu');
     }
   }
 
@@ -56,40 +47,45 @@ class AuthService {
         'newPassword': newPassword,
       });
     } on DioException catch (e) {
-      if (e.response != null && e.response?.data != null) {
-        throw e.response!.data['message'] ?? e.response!.data['error'] ?? 'Lỗi đổi mật khẩu';
-      }
-      throw 'Lỗi kết nối máy chủ';
+      throw _extractErrorMessage(e, 'Lỗi đổi mật khẩu');
     }
   }
 
-  Future<void> completeOnboarding(List<String> goals, String level, int dailyGoal) async {
+  Future<void> completeOnboarding(List<String> goals, int dailyGoal) async {
     try {
       await _dio.put('/users/me/onboarding', data: {
         'learningGoals': goals,
-        'koreanLevel': level,
         'dailyGoalMinutes': dailyGoal,
       });
     } on DioException catch (e) {
-      if (e.response != null && e.response?.data != null) {
-        throw e.response!.data['message'] ?? e.response!.data['error'] ?? 'Lỗi lưu thông tin';
-      }
-      throw 'Lỗi kết nối máy chủ';
+      throw _extractErrorMessage(e, 'Lỗi lưu thông tin');
     }
   }
 
   Future<Map<String, dynamic>> getCurrentUser() async {
     try {
       final response = await _dio.get('/users/me');
-      if (response.data['success'] == true) {
+      if (response.data is Map<String, dynamic> && response.data['success'] == true) {
         return response.data['data'];
       }
-      throw response.data['message'] ?? 'Lỗi tải thông tin người dùng';
-    } on DioException catch (e) {
-      if (e.response != null && e.response?.data != null) {
-        throw e.response!.data['message'] ?? e.response!.data['error'] ?? 'Lỗi tải thông tin người dùng';
+      if (response.data is Map<String, dynamic>) {
+        throw response.data['message'] ?? 'Lỗi tải thông tin người dùng';
       }
-      throw 'Lỗi kết nối máy chủ';
+      throw 'Lỗi tải thông tin người dùng';
+    } on DioException catch (e) {
+      throw _extractErrorMessage(e, 'Lỗi tải thông tin người dùng');
     }
+  }
+
+  String _extractErrorMessage(DioException e, String defaultMessage) {
+    if (e.response != null && e.response?.data != null) {
+      final data = e.response!.data;
+      if (data is Map<String, dynamic>) {
+        return data['message']?.toString() ?? data['error']?.toString() ?? defaultMessage;
+      } else if (data is String && data.isNotEmpty) {
+        return data;
+      }
+    }
+    return defaultMessage;
   }
 }

@@ -58,8 +58,6 @@ public class User {
         private String avatarUrl;
         @Builder.Default
         private String nativeLanguage = "vi";
-        @Builder.Default
-        private String koreanLevel = "beginner"; // beginner | intermediate | advanced
         private List<String> learningGoals;
         private Instant joinedAt;
     }
@@ -94,6 +92,8 @@ public class User {
         @Builder.Default
         private boolean notificationsEnabled = true;
         private String reminderTime;       // "09:00"
+        @Builder.Default
+        private String locale = "vi";
     }
 
     @Data

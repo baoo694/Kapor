@@ -1,4 +1,51 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://192.168.0.85:8080';
+
+export type AdminTopicPayload = {
+  id?: string;
+  domain: string;
+  title: string;
+  titleVi: string;
+  description?: string;
+  order: number;
+  prerequisiteTopicIds: string[];
+  tags: string[];
+  isActive: boolean;
+};
+
+export type LessonVocabularyPayload = {
+  id?: string;
+  korean?: string;
+  pronunciation?: string;
+  vietnamese?: string;
+  english?: string;
+  context?: string;
+  codeSnippet?: string;
+  audioUrl?: string;
+};
+
+export type LessonExercisePayload = {
+  id?: string;
+  type: 'multiple_choice' | 'fill_blank';
+  question?: string;
+  questionVi?: string;
+  options?: string[];
+  correctAnswer?: string;
+};
+
+export type AdminLessonPayload = {
+  id?: string;
+  topicId: string;
+  title: string;
+  titleVi: string;
+  content?: string;
+  contentVi?: string;
+  order: number;
+  vocabulary: LessonVocabularyPayload[];
+  exercises: LessonExercisePayload[];
+  topicTitle?: string;
+  topicTitleVi?: string;
+  domain?: string;
+};
 
 const getHeaders = () => {
   const token = localStorage.getItem('kapor_admin_token');
@@ -10,6 +57,13 @@ const getHeaders = () => {
 
 // Helper to unwrap standard ApiResponse { success, data, message }
 const handleResponse = async (res: Response) => {
+  if (res.status === 401 || res.status === 403) {
+    localStorage.removeItem('kapor_admin_token');
+    localStorage.removeItem('kapor_admin_refresh_token');
+    window.location.reload();
+    throw new Error('Unauthorized access, please login again.');
+  }
+
   if (!res.ok) {
     let message = 'API request failed';
     try {
@@ -59,6 +113,81 @@ export const api = {
   
   deleteUser: async (id: string) => {
     const res = await fetch(`${API_BASE}/api/admin/users/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
+  createUser: async (data: { email: string; password: string; name: string; role?: string }) => {
+    const res = await fetch(`${API_BASE}/api/admin/users`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return handleResponse(res);
+  },
+
+  // Topics API
+  getAdminTopics: async (domain?: string): Promise<AdminTopicPayload[]> => {
+    const query = domain ? `?domain=${encodeURIComponent(domain)}` : '';
+    const res = await fetch(`${API_BASE}/api/admin/topics${query}`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  createAdminTopic: async (data: AdminTopicPayload): Promise<AdminTopicPayload> => {
+    const res = await fetch(`${API_BASE}/api/admin/topics`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return handleResponse(res);
+  },
+
+  updateAdminTopic: async (id: string, data: AdminTopicPayload): Promise<AdminTopicPayload> => {
+    const res = await fetch(`${API_BASE}/api/admin/topics/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return handleResponse(res);
+  },
+
+  deleteAdminTopic: async (id: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/api/admin/topics/${id}`, {
+      method: 'DELETE',
+      headers: getHeaders()
+    });
+    return handleResponse(res);
+  },
+
+  // Lessons API
+  getAdminLessons: async (topicId?: string): Promise<AdminLessonPayload[]> => {
+    const query = topicId ? `?topicId=${encodeURIComponent(topicId)}` : '';
+    const res = await fetch(`${API_BASE}/api/admin/lessons${query}`, { headers: getHeaders() });
+    return handleResponse(res);
+  },
+
+  createAdminLesson: async (data: AdminLessonPayload): Promise<AdminLessonPayload> => {
+    const res = await fetch(`${API_BASE}/api/admin/lessons`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return handleResponse(res);
+  },
+
+  updateAdminLesson: async (id: string, data: AdminLessonPayload): Promise<AdminLessonPayload> => {
+    const res = await fetch(`${API_BASE}/api/admin/lessons/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(data)
+    });
+    return handleResponse(res);
+  },
+
+  deleteAdminLesson: async (id: string): Promise<void> => {
+    const res = await fetch(`${API_BASE}/api/admin/lessons/${id}`, {
       method: 'DELETE',
       headers: getHeaders()
     });

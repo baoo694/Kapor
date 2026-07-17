@@ -32,7 +32,6 @@ class UserDtoTest {
             assertThat(dto.getDisplayName()).isEqualTo("Test User");
             assertThat(dto.getAvatarUrl()).isEqualTo("https://example.com/avatar.jpg");
             assertThat(dto.getNativeLanguage()).isEqualTo("vi");
-            assertThat(dto.getKoreanLevel()).isEqualTo("beginner");
             assertThat(dto.getStreak()).isNotNull();
             assertThat(dto.getSettings()).isNotNull();
             assertThat(dto.getRoles()).contains("ROLE_USER");

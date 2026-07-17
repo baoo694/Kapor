@@ -8,6 +8,5 @@ public class UserUpdateRequest {
     private String displayName;
     private String avatarUrl;
     private String nativeLanguage;
-    private String koreanLevel;
     private User.UserSettings settings;
 }

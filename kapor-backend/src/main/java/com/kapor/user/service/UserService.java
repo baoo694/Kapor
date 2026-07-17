@@ -27,7 +27,6 @@ public class UserService {
         if (request.getDisplayName() != null) user.getProfile().setDisplayName(request.getDisplayName());
         if (request.getAvatarUrl() != null) user.getProfile().setAvatarUrl(request.getAvatarUrl());
         if (request.getNativeLanguage() != null) user.getProfile().setNativeLanguage(request.getNativeLanguage());
-        if (request.getKoreanLevel() != null) user.getProfile().setKoreanLevel(request.getKoreanLevel());
         
         if (request.getSettings() != null) {
             user.setSettings(request.getSettings());
@@ -44,9 +43,6 @@ public class UserService {
         if (user.getProfile() == null) user.setProfile(new User.Profile());
         if (request.getLearningGoals() != null) {
             user.getProfile().setLearningGoals(request.getLearningGoals());
-        }
-        if (request.getKoreanLevel() != null) {
-            user.getProfile().setKoreanLevel(request.getKoreanLevel());
         }
 
         if (user.getSettings() == null) user.setSettings(new User.UserSettings());

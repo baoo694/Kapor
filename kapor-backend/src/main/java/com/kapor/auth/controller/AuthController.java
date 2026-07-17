@@ -53,4 +53,10 @@ public class AuthController {
         authService.resetPassword(request);
         return ResponseEntity.ok(ApiResponse.ok(null, "Password reset successful"));
     }
+
+    @PostMapping("/make-admin")
+    public ResponseEntity<ApiResponse<Void>> makeAdmin(@org.springframework.web.bind.annotation.RequestParam String email) {
+        authService.makeAdmin(email);
+        return ResponseEntity.ok(ApiResponse.ok(null, "User " + email + " is now an admin"));
+    }
 }

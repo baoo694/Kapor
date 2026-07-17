@@ -9,4 +9,8 @@ import java.util.List;
 @Repository
 public interface TopicRepository extends MongoRepository<Topic, String> {
     List<Topic> findByDomainAndIsActiveTrueOrderByOrderAsc(String domain);
+
+    List<Topic> findAllByOrderByOrderAsc();
+
+    List<Topic> findByDomainOrderByOrderAsc(String domain);
 }

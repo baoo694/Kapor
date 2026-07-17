@@ -95,12 +95,12 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> completeOnboarding(List<String> goals, String level, int dailyGoal) async {
+  Future<void> completeOnboarding(List<String> goals, int dailyGoal) async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      await _authService.completeOnboarding(goals, level, dailyGoal);
+      await _authService.completeOnboarding(goals, dailyGoal);
       
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('has_completed_onboarding', true);
@@ -108,7 +108,6 @@ class AuthProvider extends ChangeNotifier {
       if (_user != null) {
         _user!['hasCompletedOnboarding'] = true;
         _user!['learningGoals'] = goals;
-        _user!['koreanLevel'] = level;
       }
     } finally {
       _isLoading = false;

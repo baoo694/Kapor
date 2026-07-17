@@ -57,7 +57,6 @@ class UserServiceTest {
             assertThat(result.getEmail()).isEqualTo("test@example.com");
             assertThat(result.getDisplayName()).isEqualTo("Test User");
             assertThat(result.getNativeLanguage()).isEqualTo("vi");
-            assertThat(result.getKoreanLevel()).isEqualTo("beginner");
         }
 
         @Test
@@ -90,21 +89,6 @@ class UserServiceTest {
             // Other fields should remain unchanged
             assertThat(result.getNativeLanguage()).isEqualTo("vi");
             verify(userRepository).save(any(User.class));
-        }
-
-        @Test
-        @DisplayName("should update Korean level")
-        void shouldUpdateKoreanLevel() {
-            when(userRepository.findByEmail("test@example.com")).thenReturn(Optional.of(testUser));
-            when(userRepository.save(any(User.class))).thenReturn(testUser);
-
-            UserUpdateRequest request = new UserUpdateRequest();
-            request.setKoreanLevel("advanced");
-
-            UserDto result = userService.updateUser("test@example.com", request);
-
-            assertThat(testUser.getProfile().getKoreanLevel()).isEqualTo("advanced");
-            verify(userRepository).save(testUser);
         }
 
         @Test
@@ -146,7 +130,6 @@ class UserServiceTest {
             // Original values should be unchanged
             assertThat(testUser.getProfile().getDisplayName()).isEqualTo("Test User");
             assertThat(testUser.getProfile().getNativeLanguage()).isEqualTo("vi");
-            assertThat(testUser.getProfile().getKoreanLevel()).isEqualTo("beginner");
         }
 
         @Test

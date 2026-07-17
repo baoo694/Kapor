@@ -75,8 +75,7 @@ class UserControllerTest {
                     .andExpect(jsonPath("$.data.id").value(savedUser.getId()))
                     .andExpect(jsonPath("$.data.email").value("test@example.com"))
                     .andExpect(jsonPath("$.data.displayName").value("Test User"))
-                    .andExpect(jsonPath("$.data.nativeLanguage").value("vi"))
-                    .andExpect(jsonPath("$.data.koreanLevel").value("beginner"));
+                    .andExpect(jsonPath("$.data.nativeLanguage").value("vi"));
         }
 
         @Test
@@ -142,20 +141,6 @@ class UserControllerTest {
         }
 
         @Test
-        @DisplayName("should update Korean level")
-        void shouldUpdateKoreanLevel() throws Exception {
-            UserUpdateRequest request = new UserUpdateRequest();
-            request.setKoreanLevel("intermediate");
-
-            mockMvc.perform(put("/api/users/me")
-                            .header("Authorization", "Bearer " + accessToken)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(request)))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.data.koreanLevel").value("intermediate"));
-        }
-
-        @Test
         @DisplayName("should update native language")
         void shouldUpdateNativeLanguage() throws Exception {
             UserUpdateRequest request = new UserUpdateRequest();
@@ -208,8 +193,7 @@ class UserControllerTest {
                             .content(objectMapper.writeValueAsString(request)))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.displayName").value("Only Name Changed"))
-                    .andExpect(jsonPath("$.data.nativeLanguage").value("vi"))  // unchanged
-                    .andExpect(jsonPath("$.data.koreanLevel").value("beginner")); // unchanged
+                    .andExpect(jsonPath("$.data.nativeLanguage").value("vi"));  // unchanged
         }
 
         @Test

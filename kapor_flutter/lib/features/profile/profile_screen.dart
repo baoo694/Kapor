@@ -86,7 +86,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final user = authProvider.user;
           final displayName = user?['displayName'] ?? 'Người dùng';
           final email = user?['email'] ?? 'Chưa cập nhật email';
-          final level = user?['koreanLevel'] ?? 'Beginner';
           final language = user?['nativeLanguage'] ?? 'vi';
           
           final textColor = Theme.of(context).colorScheme.onBackground;
@@ -129,8 +128,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          _Badge(text: level, color: _teal),
-                          const SizedBox(width: 6),
                           _Badge(text: language == 'vi' ? '🇻🇳 Việt' : '🇺🇸 English', color: _purple),
                         ],
                       ),

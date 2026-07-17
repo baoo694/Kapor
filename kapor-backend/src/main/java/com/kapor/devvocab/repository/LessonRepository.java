@@ -9,5 +9,6 @@ import java.util.List;
 @Repository
 public interface LessonRepository extends MongoRepository<Lesson, String> {
     List<Lesson> findByTopicIdOrderByOrderAsc(String topicId);
+    List<Lesson> findAllByOrderByOrderAsc();
     long countByTopicId(String topicId);
 }

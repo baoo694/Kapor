@@ -7,7 +7,7 @@ class ApiClient {
 
   // Change this depending on the environment (e.g. 10.0.2.2 for Android emulator, 
   // localhost for iOS simulator, or your local machine IP like 192.168.x.x for physical devices)
-  static const String baseUrl = 'http://192.168.0.39:8080/api';
+  static const String baseUrl = 'http://192.168.0.85:8080/api';
 
   factory ApiClient() {
     return _instance;

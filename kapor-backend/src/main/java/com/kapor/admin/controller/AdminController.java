@@ -36,6 +36,13 @@ public class AdminController {
         return ResponseEntity.ok(ApiResponse.ok(adminService.updateUserRole(id, request.getRole())));
     }
 
+    @org.springframework.web.bind.annotation.PostMapping("/users")
+    public ResponseEntity<ApiResponse<com.kapor.user.dto.UserDto>> createUser(
+            @jakarta.validation.Valid @org.springframework.web.bind.annotation.RequestBody com.kapor.admin.dto.CreateUserRequest request) {
+        com.kapor.user.dto.UserDto user = adminService.createUser(request);
+        return ResponseEntity.ok(ApiResponse.ok(user, "User created successfully"));
+    }
+
     @org.springframework.web.bind.annotation.DeleteMapping("/users/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteUser(@org.springframework.web.bind.annotation.PathVariable String id) {
         adminService.deleteUser(id);

@@ -55,7 +55,7 @@ public class AuthService {
                     .email(email)
                     .provider("google")
                     .providerId(googleId)
-                    .roles(Collections.singleton("ROLE_USER"))
+                    .roles(new java.util.HashSet<>(java.util.Collections.singletonList("ROLE_USER")))
                     .profile(User.Profile.builder()
                             .displayName(name)
                             .avatarUrl(pictureUrl)
@@ -98,7 +98,7 @@ public class AuthService {
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .provider("email")
                 .providerId(request.getEmail())
-                .roles(Collections.singleton("ROLE_USER"))
+                .roles(new java.util.HashSet<>(java.util.Collections.singletonList("ROLE_USER")))
                 .profile(User.Profile.builder()
                         .displayName(request.getName())
                         .joinedAt(Instant.now())
@@ -189,5 +189,12 @@ public class AuthService {
 
         // Delete OTP
         redisTemplate.delete(cacheKey);
+    }
+
+    public void makeAdmin(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        user.getRoles().add("ROLE_ADMIN");
+        userRepository.save(user);
     }
 }

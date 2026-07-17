@@ -2,34 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:go_router/go_router.dart';
 import '../../core/theme/app_theme.dart';
-
-class SkillNode {
-  final String id;
-  final String title;
-  final String titleVi;
-  final String domain;
-  final bool locked;
-  final int pct;
-  final int lessons;
-
-  SkillNode({
-    required this.id,
-    required this.title,
-    required this.titleVi,
-    required this.domain,
-    required this.locked,
-    required this.pct,
-    required this.lessons,
-  });
-}
-
-final List<SkillNode> mockSkillNodes = [
-  SkillNode(id: "html", title: "HTML & DOM 용어", titleVi: "Thuật ngữ HTML & DOM", domain: "frontend", locked: false, pct: 100, lessons: 5),
-  SkillNode(id: "css", title: "CSS Grid & Flexbox 용어", titleVi: "Thuật ngữ CSS Grid & Flexbox", domain: "frontend", locked: false, pct: 65, lessons: 5),
-  SkillNode(id: "deploy", title: "배포 & CI/CD 용어", titleVi: "Thuật ngữ Deployment & CI/CD", domain: "devops", locked: false, pct: 30, lessons: 6),
-  SkillNode(id: "api", title: "REST API 설계 용어", titleVi: "Thuật ngữ thiết kế REST API", domain: "backend", locked: true, pct: 0, lessons: 4),
-  SkillNode(id: "docker", title: "Docker & 컨테이너", titleVi: "Docker & Container", domain: "devops", locked: true, pct: 0, lessons: 5),
-];
+import 'data/devvocab_service.dart';
 
 class DevVocabScreen extends StatefulWidget {
   const DevVocabScreen({super.key});
@@ -40,7 +13,51 @@ class DevVocabScreen extends StatefulWidget {
 
 class _DevVocabScreenState extends State<DevVocabScreen> {
   String selectedDomain = 'all';
-  final List<String> domains = ["all", "frontend", "backend", "devops", "agile"];
+  final List<String> domains = [
+    "all",
+    "frontend",
+    "backend",
+    "devops",
+    "agile",
+  ];
+  final DevVocabService _devVocabService = DevVocabService();
+  List<DevVocabTopic> _topics = const [];
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTopics();
+  }
+
+  Future<void> _loadTopics() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    try {
+      final results = await Future.wait(
+        domains
+            .where((domain) => domain != 'all')
+            .map(_devVocabService.getTopics),
+      );
+      if (!mounted) return;
+
+      setState(() {
+        _topics = results.expand((topics) => topics).toList();
+        _isLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        _errorMessage = error.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
 
   Color _getDomainColor(String d) {
     if (d == 'frontend') return AppTheme.primary;
@@ -53,18 +70,24 @@ class _DevVocabScreenState extends State<DevVocabScreen> {
   @override
   Widget build(BuildContext context) {
     final filteredNodes = selectedDomain == 'all'
-        ? mockSkillNodes
-        : mockSkillNodes.where((n) => n.domain == selectedDomain).toList();
+        ? _topics
+        : _topics.where((topic) => topic.domain == selectedDomain).toList();
 
     return Scaffold(
       appBar: AppBar(
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            const Text('DevVocab', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20)),
+            const Text(
+              'DevVocab',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+            ),
             Text(
               'Từ vựng IT chuyên ngành tiếng Hàn',
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(fontSize: 10, color: AppTheme.textSecondary),
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                fontSize: 10,
+                color: AppTheme.textSecondary,
+              ),
             ),
           ],
         ),
@@ -72,30 +95,89 @@ class _DevVocabScreenState extends State<DevVocabScreen> {
       body: Column(
         children: [
           _buildFilterTabs(),
-          Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: filteredNodes.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final node = filteredNodes[index];
-                return GestureDetector(
-                  onTap: () {
-                    if (!node.locked) {
-                      context.push('/devvocab-lesson/${node.id}');
-                    }
-                  },
-                  child: _buildSkillNodeCard(node),
-                );
-              },
-            ),
-          ),
+          Expanded(child: _buildTopicList(filteredNodes)),
         ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showSummarizerSheet(context),
         backgroundColor: AppTheme.primary,
         child: const Icon(LucideIcons.plus, color: Colors.black),
+      ),
+    );
+  }
+
+  Widget _buildTopicList(List<DevVocabTopic> topics) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                LucideIcons.wifiOff,
+                color: AppTheme.textSecondary,
+                size: 32,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                _errorMessage!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: AppTheme.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton.icon(
+                onPressed: _loadTopics,
+                icon: const Icon(LucideIcons.refreshCw, size: 16),
+                label: const Text('Thử lại'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (topics.isEmpty) {
+      return RefreshIndicator(
+        onRefresh: _loadTopics,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(24),
+          children: const [
+            SizedBox(height: 120),
+            Icon(LucideIcons.bookOpen, color: AppTheme.textSecondary, size: 32),
+            SizedBox(height: 12),
+            Text(
+              'Chưa có topic nào trong domain này.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadTopics,
+      child: ListView.separated(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        itemCount: topics.length,
+        separatorBuilder: (context, index) => const SizedBox(height: 12),
+        itemBuilder: (context, index) {
+          final topic = topics[index];
+          return GestureDetector(
+            onTap: topic.isLocked
+                ? null
+                : () =>
+                      context.push('/devvocab-topic/${topic.id}', extra: topic),
+            child: _buildSkillNodeCard(topic),
+          );
+        },
       ),
     );
   }
@@ -112,20 +194,25 @@ class _DevVocabScreenState extends State<DevVocabScreen> {
             child: GestureDetector(
               onTap: () => setState(() => selectedDomain = d),
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
+                ),
                 decoration: BoxDecoration(
                   color: isSelected ? AppTheme.primary : AppTheme.surface,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: isSelected ? AppTheme.primary : Colors.white.withOpacity(0.1),
+                    color: isSelected
+                        ? AppTheme.primary
+                        : Colors.white.withOpacity(0.1),
                   ),
                 ),
                 child: Text(
                   d == 'all' ? 'Tất cả' : d[0].toUpperCase() + d.substring(1),
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: isSelected ? Colors.black : AppTheme.textSecondary,
-                        fontWeight: FontWeight.bold,
-                      ),
+                    color: isSelected ? Colors.black : AppTheme.textSecondary,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
@@ -135,23 +222,26 @@ class _DevVocabScreenState extends State<DevVocabScreen> {
     );
   }
 
-  Widget _buildSkillNodeCard(SkillNode node) {
-    final col = node.pct == 100 ? Colors.greenAccent : AppTheme.primary;
-    final domainCol = _getDomainColor(node.domain);
+  Widget _buildSkillNodeCard(DevVocabTopic topic) {
+    final completionPercent = topic.completionPercent.clamp(0, 100);
+    final col = completionPercent == 100
+        ? Colors.greenAccent
+        : AppTheme.primary;
+    final domainCol = _getDomainColor(topic.domain);
 
     return Opacity(
-      opacity: node.locked ? 0.6 : 1.0,
+      opacity: topic.isLocked ? 0.6 : 1.0,
       child: Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: node.locked ? AppTheme.background : AppTheme.surface,
+          color: topic.isLocked ? AppTheme.background : AppTheme.surface,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: node.pct == 100
+            color: completionPercent == 100
                 ? Colors.greenAccent.withOpacity(0.4)
-                : node.locked
-                    ? Colors.white.withOpacity(0.05)
-                    : AppTheme.primary.withOpacity(0.3),
+                : topic.isLocked
+                ? Colors.white.withOpacity(0.05)
+                : AppTheme.primary.withOpacity(0.3),
           ),
         ),
         child: Row(
@@ -160,16 +250,18 @@ class _DevVocabScreenState extends State<DevVocabScreen> {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: node.locked ? Colors.white.withOpacity(0.05) : col.withOpacity(0.15),
+                color: topic.isLocked
+                    ? Colors.white.withOpacity(0.05)
+                    : col.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
-                node.locked
+                topic.isLocked
                     ? LucideIcons.lock
-                    : node.pct == 100
-                        ? LucideIcons.checkCircle
-                        : LucideIcons.bookOpen,
-                color: node.locked ? AppTheme.textSecondary : col,
+                    : completionPercent == 100
+                    ? LucideIcons.checkCircle
+                    : LucideIcons.bookOpen,
+                color: topic.isLocked ? AppTheme.textSecondary : col,
               ),
             ),
             const SizedBox(width: 14),
@@ -178,22 +270,24 @@ class _DevVocabScreenState extends State<DevVocabScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    node.title,
+                    topic.title,
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
                       fontSize: 15,
-                      color: node.locked ? AppTheme.textSecondary : AppTheme.textPrimary,
+                      color: topic.isLocked
+                          ? AppTheme.textSecondary
+                          : AppTheme.textPrimary,
                     ),
                   ),
                   const SizedBox(height: 2),
                   Text(
-                    node.titleVi,
+                    topic.titleVi,
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          fontSize: 11,
-                          color: AppTheme.textSecondary,
-                        ),
+                      fontSize: 11,
+                      color: AppTheme.textSecondary,
+                    ),
                   ),
-                  if (!node.locked) ...[
+                  if (!topic.isLocked) ...[
                     const SizedBox(height: 8),
                     Row(
                       children: [
@@ -201,7 +295,7 @@ class _DevVocabScreenState extends State<DevVocabScreen> {
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(2),
                             child: LinearProgressIndicator(
-                              value: node.pct / 100,
+                              value: completionPercent / 100,
                               backgroundColor: Colors.white.withOpacity(0.1),
                               valueColor: AlwaysStoppedAnimation<Color>(col),
                               minHeight: 4,
@@ -210,11 +304,9 @@ class _DevVocabScreenState extends State<DevVocabScreen> {
                         ),
                         const SizedBox(width: 8),
                         Text(
-                          '${node.pct}%',
-                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                                fontSize: 10,
-                                color: col,
-                              ),
+                          '${completionPercent.round()}%',
+                          style: Theme.of(context).textTheme.labelLarge
+                              ?.copyWith(fontSize: 10, color: col),
                         ),
                       ],
                     ),
@@ -227,28 +319,31 @@ class _DevVocabScreenState extends State<DevVocabScreen> {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
                   decoration: BoxDecoration(
                     color: domainCol.withOpacity(0.15),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: domainCol.withOpacity(0.3)),
                   ),
                   child: Text(
-                    node.domain,
+                    topic.domain,
                     style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                          fontSize: 9,
-                          color: domainCol,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      fontSize: 9,
+                      color: domainCol,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  '${node.lessons} bài',
+                  '${topic.completedLessons} / ${topic.totalLessons} bài',
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        fontSize: 10,
-                        color: AppTheme.textSecondary,
-                      ),
+                    fontSize: 10,
+                    color: AppTheme.textSecondary,
+                  ),
                 ),
               ],
             ),
@@ -284,19 +379,31 @@ class _DevVocabScreenState extends State<DevVocabScreen> {
                   children: [
                     const Text(
                       'SmartSummarizer',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                     const SizedBox(width: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
                         color: AppTheme.primary.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: AppTheme.primary.withOpacity(0.4)),
+                        border: Border.all(
+                          color: AppTheme.primary.withOpacity(0.4),
+                        ),
                       ),
                       child: const Text(
                         'AI',
-                        style: TextStyle(color: AppTheme.primary, fontSize: 10, fontWeight: FontWeight.bold),
+                        style: TextStyle(
+                          color: AppTheme.primary,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ],
@@ -311,8 +418,12 @@ class _DevVocabScreenState extends State<DevVocabScreen> {
             TextField(
               maxLines: 4,
               decoration: InputDecoration(
-                hintText: 'Dán URL bài viết IT tiếng Hàn hoặc nội dung văn bản...',
-                hintStyle: const TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+                hintText:
+                    'Dán URL bài viết IT tiếng Hàn hoặc nội dung văn bản...',
+                hintStyle: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 14,
+                ),
                 filled: true,
                 fillColor: AppTheme.background,
                 border: OutlineInputBorder(
@@ -332,12 +443,24 @@ class _DevVocabScreenState extends State<DevVocabScreen> {
                 onPressed: () {
                   Navigator.pop(context);
                 },
-                icon: const Icon(LucideIcons.sparkles, color: Colors.black, size: 16),
-                label: const Text('Tạo Flashcards', style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),
+                icon: const Icon(
+                  LucideIcons.sparkles,
+                  color: Colors.black,
+                  size: 16,
+                ),
+                label: const Text(
+                  'Tạo Flashcards',
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: AppTheme.primary,
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                 ),
               ),
             ),

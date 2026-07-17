@@ -16,32 +16,25 @@ class OnboardingScreen extends StatefulWidget {
 class _OnboardingScreenState extends State<OnboardingScreen> {
   int _step = 0;
   List<String> _goals = [];
-  String _level = '';
   String _dailyGoal = '10';
   bool _isLoading = false;
 
-  final List<String> _steps = ["Mục tiêu", "Trình độ", "Kế hoạch"];
+  final List<String> _steps = ["Mục tiêu", "Kế hoạch"];
   final List<String> _goalOptions = [
     "사무적 한국어 (Giao tiếp văn phòng)",
     "IT 전문 용어 (Thuật ngữ IT)",
     "인터뷰 준비 (Phỏng vấn)",
     "직장 생활 (Sinh hoạt công sở)"
   ];
-  final List<Map<String, String>> _levelOptions = [
-    {"value": "beginner", "label": "Sơ cấp", "sub": "Mới bắt đầu học tiếng Hàn"},
-    {"value": "intermediate", "label": "Trung cấp", "sub": "Biết một số từ vựng & ngữ pháp cơ bản"},
-    {"value": "advanced", "label": "Cao cấp", "sub": "Có thể hội thoại tiếng Hàn cơ bản"},
-  ];
   final List<String> _dailyOptions = ["5", "10", "15", "30"];
 
   bool get _canNext {
     if (_step == 0) return _goals.isNotEmpty;
-    if (_step == 1) return _level.isNotEmpty;
     return _dailyGoal.isNotEmpty;
   }
 
   Future<void> _handleNext() async {
-    if (_step < 2) {
+    if (_step < 1) {
       setState(() {
         _step++;
       });
@@ -53,7 +46,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
         final authProvider = context.read<AuthProvider>();
         await authProvider.completeOnboarding(
           _goals,
-          _level,
           int.tryParse(_dailyGoal) ?? 10,
         );
 
@@ -125,8 +117,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
                 children: [
                   if (_step == 0) _buildGoalsStep(),
-                  if (_step == 1) _buildLevelStep(),
-                  if (_step == 2) _buildDailyStep(),
+                  if (_step == 1) _buildDailyStep(),
                 ],
               ),
             ),
@@ -182,7 +173,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                             ),
                           )
                         : Text(
-                            _step < 2 ? 'Tiếp theo →' : 'Bắt đầu học! 🚀',
+                            _step < 1 ? 'Tiếp theo →' : 'Bắt đầu học! 🚀',
                             style: GoogleFonts.outfit(
                               fontWeight: FontWeight.w700,
                               fontSize: 14,
@@ -256,76 +247,6 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                     ),
                     if (isSelected)
                       Icon(Icons.check, color: AppTheme.primary, size: 18),
-                  ],
-                ),
-              ),
-            ),
-          );
-        }),
-      ],
-    );
-  }
-
-  Widget _buildLevelStep() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Trình độ hiện tại?',
-          style: GoogleFonts.outfit(
-            fontWeight: FontWeight.w800,
-            fontSize: 22,
-            color: AppTheme.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Chọn trình độ tiếng Hàn của bạn',
-          style: GoogleFonts.inter(
-            fontSize: 13,
-            color: AppTheme.textSecondary,
-          ),
-        ),
-        const SizedBox(height: 24),
-        ..._levelOptions.map((opt) {
-          final isSelected = _level == opt["value"];
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: InkWell(
-              onTap: () {
-                setState(() {
-                  _level = opt["value"]!;
-                });
-              },
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-                decoration: BoxDecoration(
-                  color: isSelected ? AppTheme.primary.withOpacity(0.15) : AppTheme.surface,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isSelected ? AppTheme.primary : AppTheme.textSecondary.withOpacity(0.2),
-                  ),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      opt["label"]!,
-                      style: GoogleFonts.outfit(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 16,
-                        color: isSelected ? AppTheme.primary : AppTheme.textPrimary,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      opt["sub"]!,
-                      style: GoogleFonts.inter(
-                        fontSize: 12,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
                   ],
                 ),
               ),

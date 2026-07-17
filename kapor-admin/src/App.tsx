@@ -1,6 +1,13 @@
 // @ts-nocheck
 import React, { useState, useRef, useEffect } from "react";
 import {
+  api,
+  type AdminLessonPayload,
+  type AdminTopicPayload,
+  type LessonExercisePayload,
+  type LessonVocabularyPayload,
+} from "./services/api";
+import {
   Flame, BarChart2, BookOpen, Brain, MessageSquare, Mic, Target,
   ChevronLeft, Lock, CheckCircle, Play, Pause, Volume2, Send,
   Lightbulb, Copy, Check, User, ArrowRight, Plus, X,
@@ -29,6 +36,56 @@ type Lang = "vi" | "en";
 
 const TEAL = "#2dd4bf";
 const AMBER = "#fbbf24";
+
+type TopicFormState = {
+  title: string;
+  titleVi: string;
+  domain: string;
+  description: string;
+  order: string;
+  prerequisiteTopicIds: string;
+  tags: string;
+  isActive: boolean;
+};
+
+const emptyTopicForm = (): TopicFormState => ({
+  title: "",
+  titleVi: "",
+  domain: "frontend",
+  description: "",
+  order: "0",
+  prerequisiteTopicIds: "",
+  tags: "",
+  isActive: true,
+});
+
+const commaSeparatedList = (value: string) => value
+  .split(",")
+  .map(item => item.trim())
+  .filter(Boolean);
+
+type LessonFormState = {
+  topicId: string;
+  title: string;
+  titleVi: string;
+  content: string;
+  contentVi: string;
+  order: string;
+  vocabulary: LessonVocabularyPayload[];
+  exercises: LessonExercisePayload[];
+};
+
+const emptyVocabulary = (): LessonVocabularyPayload => ({
+  korean: "", pronunciation: "", vietnamese: "", english: "", context: "", codeSnippet: "", audioUrl: "",
+});
+
+const emptyExercise = (): LessonExercisePayload => ({
+  type: "multiple_choice", question: "", questionVi: "", options: ["", ""], correctAnswer: "",
+});
+
+const emptyLessonForm = (topicId = ""): LessonFormState => ({
+  topicId, title: "", titleVi: "", content: "", contentVi: "", order: "0", vocabulary: [], exercises: [],
+});
 
 // ─── i18n ───────────────────────────────────────────────────────────────────────
 
@@ -220,10 +277,10 @@ const generatedCards = [
 ];
 
 const adminUsers = [
-  { id: "u1", name: "Nguyễn Văn A", email: "nguyen.a@gmail.com", level: "Beginner", streak: 15, joined: "2024-01", role: "student", avatar: "👨‍💻" },
-  { id: "u2", name: "Trần Thị B", email: "tran.b@outlook.com", level: "Intermediate", streak: 42, joined: "2023-09", role: "student", avatar: "👩‍💻" },
-  { id: "u3", name: "Lê Văn C", email: "le.c@company.vn", level: "Advanced", streak: 120, joined: "2023-05", role: "premium", avatar: "🧑‍💼" },
-  { id: "u4", name: "Phạm Admin", email: "admin@kapor.app", level: "—", streak: 0, joined: "2022-12", role: "admin", avatar: "⚙️" },
+  { id: "u1", name: "Nguyễn Văn A", email: "nguyen.a@gmail.com", streak: 15, joined: "2024-01", role: "student", avatar: "👨‍💻" },
+  { id: "u2", name: "Trần Thị B", email: "tran.b@outlook.com", streak: 42, joined: "2023-09", role: "student", avatar: "👩‍💻" },
+  { id: "u3", name: "Lê Văn C", email: "le.c@company.vn", streak: 120, joined: "2023-05", role: "premium", avatar: "🧑‍💼" },
+  { id: "u4", name: "Phạm Admin", email: "admin@kapor.app", streak: 0, joined: "2022-12", role: "admin", avatar: "⚙️" },
 ];
 
 const adminVideos = [
@@ -258,14 +315,6 @@ const aiUsageData = [
 const dauData = [
   { day: "Mon", dau: 89 }, { day: "Tue", dau: 112 }, { day: "Wed", dau: 145 },
   { day: "Thu", dau: 132 }, { day: "Fri", dau: 156 }, { day: "Sat", dau: 98 }, { day: "Sun", dau: 76 },
-];
-
-const adminTopics = [
-  { id: "t1", title: "HTML & DOM 용어", titleVi: "Thuật ngữ HTML & DOM", domain: "frontend", difficulty: "beginner", lessonCount: 5, order: 1 },
-  { id: "t2", title: "CSS Grid & Flexbox 용어", titleVi: "Thuật ngữ CSS Grid & Flexbox", domain: "frontend", difficulty: "intermediate", lessonCount: 5, order: 2 },
-  { id: "t3", title: "배포 & CI/CD 용어", titleVi: "Thuật ngữ Deployment & CI/CD", domain: "devops", difficulty: "intermediate", lessonCount: 6, order: 3 },
-  { id: "t4", title: "REST API 설계 용어", titleVi: "Thuật ngữ thiết kế REST API", domain: "backend", difficulty: "intermediate", lessonCount: 4, order: 4 },
-  { id: "t5", title: "Docker & 컨테이너", titleVi: "Docker & Container", domain: "devops", difficulty: "advanced", lessonCount: 5, order: 5 },
 ];
 
 const adminLessons = [
@@ -494,19 +543,13 @@ function LoginScreen({ nav }: { nav: (s: Screen) => void }) {
 function OnboardingScreen({ nav }: { nav: (s: Screen) => void }) {
   const [step, setStep] = useState(0);
   const [goals, setGoals] = useState<string[]>([]);
-  const [level, setLevel] = useState("");
   const [dailyGoal, setDailyGoal] = useState("10");
 
-  const steps = ["Mục tiêu", "Trình độ", "Kế hoạch"];
+  const steps = ["Mục tiêu", "Kế hoạch"];
   const goalOptions = ["사무적 한국어 (Giao tiếp văn phòng)", "IT 전문 용어 (Thuật ngữ IT)", "인터뷰 준비 (Phỏng vấn)", "직장 생활 (Sinh hoạt công sở)"];
-  const levelOptions = [
-    { value: "beginner", label: "Sơ cấp", sub: "Mới bắt đầu học tiếng Hàn" },
-    { value: "intermediate", label: "Trung cấp", sub: "Biết một số từ vựng & ngữ pháp cơ bản" },
-    { value: "advanced", label: "Cao cấp", sub: "Có thể hội thoại tiếng Hàn cơ bản" },
-  ];
   const dailyOptions = ["5", "10", "15", "30"];
-  const canNext = step === 0 ? goals.length > 0 : step === 1 ? !!level : !!dailyGoal;
-  const handleNext = () => step < 2 ? setStep(s => s + 1) : nav("dashboard");
+  const canNext = step === 0 ? goals.length > 0 : !!dailyGoal;
+  const handleNext = () => step < 1 ? setStep(s => s + 1) : nav("dashboard");
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -537,23 +580,6 @@ function OnboardingScreen({ nav }: { nav: (s: Screen) => void }) {
           </>
         )}
         {step === 1 && (
-          <>
-            <h2 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 20, color: "oklch(0.92 0.01 250)", margin: "0 0 4px" }}>Trình độ hiện tại?</h2>
-            <p style={{ fontSize: 12, color: "oklch(0.50 0.03 250)", margin: "0 0 16px" }}>Chọn trình độ tiếng Hàn của bạn</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {levelOptions.map(opt => {
-                const sel = level === opt.value;
-                return (
-                  <button key={opt.value} onClick={() => setLevel(opt.value)} style={{ padding: "13px 16px", borderRadius: 12, border: `1px solid ${sel ? TEAL : "oklch(0.25 0.03 250)"}`, background: sel ? `${TEAL}15` : "oklch(0.14 0.025 250)", textAlign: "left", cursor: "pointer" }}>
-                    <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 600, fontSize: 14, color: sel ? TEAL : "oklch(0.82 0.01 250)", margin: "0 0 2px" }}>{opt.label}</p>
-                    <p style={{ fontSize: 11, color: "oklch(0.48 0.03 250)", margin: 0 }}>{opt.sub}</p>
-                  </button>
-                );
-              })}
-            </div>
-          </>
-        )}
-        {step === 2 && (
           <>
             <h2 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 20, color: "oklch(0.92 0.01 250)", margin: "0 0 4px" }}>Mục tiêu hàng ngày?</h2>
             <p style={{ fontSize: 12, color: "oklch(0.50 0.03 250)", margin: "0 0 16px" }}>Học bao nhiêu phút mỗi ngày?</p>
@@ -1669,6 +1695,73 @@ type AdminSection =
 
 function AdminPanel({ lang }: { lang: Lang }) {
   const [section, setSection] = useState<AdminSection>("dashboard");
+  const [stats, setStats] = useState<any>(null);
+  const [users, setUsers] = useState<any[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [usersTotalPages, setUsersTotalPages] = useState(1);
+  const [usersPage, setUsersPage] = useState(1);
+  const [topics, setTopics] = useState<AdminTopicPayload[]>([]);
+  const [topicsLoading, setTopicsLoading] = useState(false);
+  const [topicsError, setTopicsError] = useState("");
+  const [lessons, setLessons] = useState<AdminLessonPayload[]>([]);
+  const [lessonsLoading, setLessonsLoading] = useState(false);
+  const [lessonsError, setLessonsError] = useState("");
+  const [lessonFilterTopicId, setLessonFilterTopicId] = useState("");
+
+  useEffect(() => {
+    api.getDashboardStats().then(data => setStats(data)).catch(console.error);
+  }, []);
+
+  const fetchUsers = async (page = 1, search = '') => {
+    setUsersLoading(true);
+    try {
+      const data = await api.getUsers(page, search);
+      // Spring Data Page object: { content: [...], totalPages, totalElements, ... }
+      if (data && data.content) {
+        setUsers(data.content.map((u: any) => ({
+          id: u.id,
+          name: u.displayName || u.email?.split('@')[0] || 'Unknown',
+          email: u.email,
+          streak: u.streak?.current || 0,
+          joined: u.roles ? new Date().toISOString().slice(0, 7) : '—',
+          role: u.roles?.includes('ROLE_ADMIN') ? 'admin' : u.roles?.includes('ROLE_PREMIUM') ? 'premium' : 'student',
+          avatar: u.roles?.includes('ROLE_ADMIN') ? '⚙️' : '👨‍💻',
+          stats: u.stats,
+        })));
+        setUsersTotalPages(data.totalPages || 1);
+      } else if (Array.isArray(data)) {
+        setUsers(data.map((u: any) => ({
+          id: u.id,
+          name: u.displayName || u.email?.split('@')[0] || 'Unknown',
+          email: u.email,
+          streak: u.streak?.current || 0,
+          joined: '—',
+          role: u.roles?.includes('ROLE_ADMIN') ? 'admin' : u.roles?.includes('ROLE_PREMIUM') ? 'premium' : 'student',
+          avatar: u.roles?.includes('ROLE_ADMIN') ? '⚙️' : '👨‍💻',
+          stats: u.stats,
+        })));
+      }
+    } catch (e) {
+      console.error('Failed to fetch users:', e);
+    } finally {
+      setUsersLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsers(usersPage, userSearch);
+  }, [usersPage]);
+
+  const dUserGrowth = stats?.userGrowthData || userGrowthData;
+  const dDau = stats?.dauData || dauData;
+  const dLesson = stats?.lessonCompletionData || lessonCompletionData;
+  const dAiUsage = stats?.aiUsageData || aiUsageData;
+  const dNewReg = stats?.newRegData || newRegData;
+  const dRetention = stats?.retentionData || retentionData;
+  const dAiDaily = stats?.aiDailyData || aiDailyData;
+  const dUsers = stats?.users ?? 1234;
+  const dContent = stats?.contentCount ?? 523;
+  const dDauCount = stats?.dau ?? 156;
   const [showSubEditor, setShowSubEditor] = useState(false);
   const [showAddVideo, setShowAddVideo] = useState(false);
   const [editSubs, setEditSubs] = useState(subtitleRowsInit.map(r => ({ ...r })));
@@ -1676,7 +1769,14 @@ function AdminPanel({ lang }: { lang: Lang }) {
   const [analyticsOpen, setAnalyticsOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showAddTopic, setShowAddTopic] = useState(false);
+  const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
+  const [topicForm, setTopicForm] = useState<TopicFormState>(emptyTopicForm);
+  const [topicFormError, setTopicFormError] = useState("");
+  const [topicSaving, setTopicSaving] = useState(false);
   const [showAddLesson, setShowAddLesson] = useState(false);
+  const [lessonForm, setLessonForm] = useState<LessonFormState>(emptyLessonForm);
+  const [lessonFormError, setLessonFormError] = useState("");
+  const [lessonSaving, setLessonSaving] = useState(false);
   const [showAddScenario, setShowAddScenario] = useState(false);
   const [showAddDict, setShowAddDict] = useState(false);
   const [showAddPron, setShowAddPron] = useState(false);
@@ -1691,6 +1791,11 @@ function AdminPanel({ lang }: { lang: Lang }) {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [userRoleEdits, setUserRoleEdits] = useState<Record<string, string>>({});
   const [deactivatedUsers, setDeactivatedUsers] = useState<Set<string>>(new Set());
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [createUserForm, setCreateUserForm] = useState({ name: '', email: '', password: '', role: 'ROLE_USER' });
+  const [createUserLoading, setCreateUserLoading] = useState(false);
+  const [createUserError, setCreateUserError] = useState('');
+  const [createUserSuccess, setCreateUserSuccess] = useState('');
   const [videoFilterDomain, setVideoFilterDomain] = useState("all");
   const [videoFilterDiff, setVideoFilterDiff] = useState("all");
   const [videoFilterSubs, setVideoFilterSubs] = useState("all");
@@ -1700,11 +1805,214 @@ function AdminPanel({ lang }: { lang: Lang }) {
   const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
   const [dictImportStep, setDictImportStep] = useState<"upload" | "preview">("upload");
 
+  const fetchTopics = async () => {
+    setTopicsLoading(true);
+    setTopicsError("");
+    try {
+      setTopics(await api.getAdminTopics());
+    } catch (error) {
+      console.error("Failed to fetch topics:", error);
+      setTopicsError(error instanceof Error ? error.message : "Unable to load topics.");
+    } finally {
+      setTopicsLoading(false);
+    }
+  };
+
+  const fetchLessons = async (topicId = lessonFilterTopicId) => {
+    setLessonsLoading(true);
+    setLessonsError("");
+    try {
+      setLessons(await api.getAdminLessons(topicId || undefined));
+    } catch (error) {
+      console.error("Failed to fetch lessons:", error);
+      setLessonsError(error instanceof Error ? error.message : "Unable to load lessons.");
+    } finally {
+      setLessonsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (section === "content-topics") {
+      void fetchTopics();
+    }
+  }, [section]);
+
+  useEffect(() => {
+    if (section === "content-lessons") {
+      void fetchTopics();
+      void fetchLessons();
+    }
+  }, [section, lessonFilterTopicId]);
+
+  const openNewTopic = () => {
+    setEditingTopicId(null);
+    setTopicForm(emptyTopicForm());
+    setTopicFormError("");
+    setShowAddTopic(true);
+  };
+
+  const openEditTopic = (topic: AdminTopicPayload) => {
+    setEditingTopicId(topic.id ?? null);
+    setTopicForm({
+      title: topic.title ?? "",
+      titleVi: topic.titleVi ?? "",
+      domain: topic.domain ?? "frontend",
+      description: topic.description ?? "",
+      order: String(topic.order ?? 0),
+      prerequisiteTopicIds: (topic.prerequisiteTopicIds ?? []).join(", "),
+      tags: (topic.tags ?? []).join(", "),
+      isActive: topic.isActive !== false,
+    });
+    setTopicFormError("");
+    setShowAddTopic(true);
+  };
+
+  const saveTopic = async () => {
+    if (!topicForm.title.trim() || !topicForm.titleVi.trim() || !topicForm.domain.trim()) {
+      setTopicFormError("Korean title, Vietnamese title, and domain are required.");
+      return;
+    }
+
+    const order = Number(topicForm.order);
+    if (!Number.isInteger(order) || order < 0) {
+      setTopicFormError("Order must be a whole number that is zero or greater.");
+      return;
+    }
+
+    const payload: AdminTopicPayload = {
+      title: topicForm.title.trim(),
+      titleVi: topicForm.titleVi.trim(),
+      domain: topicForm.domain.trim(),
+      description: topicForm.description.trim(),
+      order,
+      prerequisiteTopicIds: commaSeparatedList(topicForm.prerequisiteTopicIds),
+      tags: commaSeparatedList(topicForm.tags),
+      isActive: topicForm.isActive,
+    };
+
+    setTopicSaving(true);
+    setTopicFormError("");
+    try {
+      if (editingTopicId) {
+        await api.updateAdminTopic(editingTopicId, payload);
+      } else {
+        await api.createAdminTopic(payload);
+      }
+      setShowAddTopic(false);
+      setEditingTopicId(null);
+      await fetchTopics();
+    } catch (error) {
+      console.error("Failed to save topic:", error);
+      setTopicFormError(error instanceof Error ? error.message : "Unable to save topic.");
+    } finally {
+      setTopicSaving(false);
+    }
+  };
+
+  const deleteTopic = async (topic: AdminTopicPayload) => {
+    if (!topic.id || !confirm(`Delete topic \"${topic.title}\"? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await api.deleteAdminTopic(topic.id);
+      await fetchTopics();
+    } catch (error) {
+      console.error("Failed to delete topic:", error);
+      setTopicsError(error instanceof Error ? error.message : "Unable to delete topic.");
+    }
+  };
+
+  const openNewLesson = () => {
+    setEditingLessonId(null);
+    setLessonForm(emptyLessonForm(lessonFilterTopicId || topics[0]?.id || ""));
+    setLessonFormError("");
+    setShowAddLesson(true);
+  };
+
+  const openEditLesson = (lesson: AdminLessonPayload) => {
+    setEditingLessonId(lesson.id ?? null);
+    setLessonForm({
+      topicId: lesson.topicId,
+      title: lesson.title ?? "",
+      titleVi: lesson.titleVi ?? "",
+      content: lesson.content ?? "",
+      contentVi: lesson.contentVi ?? "",
+      order: String(lesson.order ?? 0),
+      vocabulary: (lesson.vocabulary ?? []).map(item => ({ ...item })),
+      exercises: (lesson.exercises ?? []).map(item => ({ ...item, options: [...(item.options ?? [])] })),
+    });
+    setLessonFormError("");
+    setShowAddLesson(true);
+  };
+
+  const saveLesson = async () => {
+    if (!lessonForm.topicId || !lessonForm.title.trim() || !lessonForm.titleVi.trim()) {
+      setLessonFormError("Topic, Korean title, and Vietnamese title are required.");
+      return;
+    }
+    const order = Number(lessonForm.order);
+    if (!Number.isInteger(order) || order < 0) {
+      setLessonFormError("Order must be a whole number that is zero or greater.");
+      return;
+    }
+
+    const payload: AdminLessonPayload = {
+      topicId: lessonForm.topicId,
+      title: lessonForm.title.trim(),
+      titleVi: lessonForm.titleVi.trim(),
+      content: lessonForm.content.trim(),
+      contentVi: lessonForm.contentVi.trim(),
+      order,
+      vocabulary: lessonForm.vocabulary,
+      exercises: lessonForm.exercises.map(exercise => ({
+        ...exercise,
+        options: exercise.type === "multiple_choice" ? (exercise.options ?? []) : [],
+      })),
+    };
+
+    setLessonSaving(true);
+    setLessonFormError("");
+    try {
+      if (editingLessonId) {
+        await api.updateAdminLesson(editingLessonId, payload);
+      } else {
+        await api.createAdminLesson(payload);
+      }
+      setShowAddLesson(false);
+      setEditingLessonId(null);
+      await fetchLessons();
+    } catch (error) {
+      console.error("Failed to save lesson:", error);
+      setLessonFormError(error instanceof Error ? error.message : "Unable to save lesson.");
+    } finally {
+      setLessonSaving(false);
+    }
+  };
+
+  const deleteLesson = async (lesson: AdminLessonPayload) => {
+    if (!lesson.id || !confirm(`Delete lesson \"${lesson.title}\"? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await api.deleteAdminLesson(lesson.id);
+      if (editingLessonId === lesson.id) {
+        setShowAddLesson(false);
+        setEditingLessonId(null);
+      }
+      await fetchLessons();
+    } catch (error) {
+      console.error("Failed to delete lesson:", error);
+      setLessonsError(error instanceof Error ? error.message : "Unable to delete lesson.");
+    }
+  };
+
   const navTo = (s: AdminSection) => {
     setSection(s); setShowSubEditor(false); setShowAddVideo(false); setShowAddTopic(false);
     setShowAddLesson(false); setShowAddScenario(false); setShowAddDict(false); setShowAddPron(false);
     setTestScenario(null); setSelectedUserId(null); setVideoBulkSelected(new Set());
     setDictImportStep("upload"); setEditingLessonId(null); setLessonEditorTab("vocab");
+    setEditingTopicId(null); setTopicFormError("");
     if (s === "analytics") setAnalyticsTab("overview");
   };
 
@@ -1761,10 +2069,10 @@ function AdminPanel({ lang }: { lang: Lang }) {
   );
 
   const kpiCards = [
-    { label: "Total Users", value: "1,234", Icon: Users, color: TEAL, sub: "+12% this month" },
-    { label: "DAU", value: "156", Icon: TrendingUp, color: "#34d399", sub: "+8% vs last week" },
+    { label: "Total Users", value: dUsers.toLocaleString(), Icon: Users, color: TEAL, sub: "+12% this month" },
+    { label: "DAU", value: dDauCount.toLocaleString(), Icon: TrendingUp, color: "#34d399", sub: "+8% vs last week" },
     { label: "MAU", value: "890", Icon: BarChart2, color: "#a78bfa", sub: "72% retention" },
-    { label: "Content", value: "523", Icon: BookOpen, color: AMBER, sub: "48 added this week" },
+    { label: "Content", value: dContent.toLocaleString(), Icon: BookOpen, color: AMBER, sub: "48 added this week" },
   ];
 
   const SideItem = ({ id, icon: Icon, label, indent = false }: { id: AdminSection; icon: React.ComponentType<{ size: number; color: string }>; label: string; indent?: boolean }) => (
@@ -1854,7 +2162,7 @@ function AdminPanel({ lang }: { lang: Lang }) {
               <div style={{ borderRadius: 14, padding: 20, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.20 0.03 250)" }}>
                 <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 600, fontSize: 14, color: "oklch(0.82 0.01 250)", margin: "0 0 16px" }}>User Growth (2025)</p>
                 <ResponsiveContainer width="100%" height={200}>
-                  <LineChart id="line-user-growth" data={userGrowthData}>
+                  <LineChart id="line-user-growth" data={dUserGrowth}>
                     <CartesianGrid key="cg" stroke="oklch(0.17 0.03 250)" strokeDasharray="3 3" />
                     <XAxis key="x" dataKey="month" tick={{ fill: "oklch(0.42 0.03 250)", fontSize: 10 }} axisLine={false} tickLine={false} />
                     <YAxis key="y" tick={{ fill: "oklch(0.42 0.03 250)", fontSize: 10 }} axisLine={false} tickLine={false} />
@@ -1866,7 +2174,7 @@ function AdminPanel({ lang }: { lang: Lang }) {
               <div style={{ borderRadius: 14, padding: 20, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.20 0.03 250)" }}>
                 <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 600, fontSize: 14, color: "oklch(0.82 0.01 250)", margin: "0 0 16px" }}>DAU This Week</p>
                 <ResponsiveContainer width="100%" height={200}>
-                  <BarChart id="bar-dau-week" data={dauData}>
+                  <BarChart id="bar-dau-week" data={dDau}>
                     <XAxis key="x" dataKey="day" tick={{ fill: "oklch(0.42 0.03 250)", fontSize: 10 }} axisLine={false} tickLine={false} />
                     <Tooltip key="tt" contentStyle={{ ...ttStyle, color: "#a78bfa" }} />
                     <Bar key="b" dataKey="dau" fill="#a78bfa" radius={[4, 4, 0, 0]} />
@@ -1910,29 +2218,94 @@ function AdminPanel({ lang }: { lang: Lang }) {
 
         {section === "users" && (
           <div>
-            <h1 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 24, color: "oklch(0.92 0.01 250)", margin: "0 0 20px" }}>Users</h1>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <h1 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 24, color: "oklch(0.92 0.01 250)", margin: 0 }}>Users</h1>
+              <button onClick={() => { setShowCreateUser(v => !v); setCreateUserError(''); setCreateUserSuccess(''); }} style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: showCreateUser ? '#f87171' : TEAL, color: showCreateUser ? '#fff' : '#000', fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, transition: 'all 0.2s' }}>
+                {showCreateUser ? <><X size={15} /> Cancel</> : <><Plus size={15} /> Create User</>}
+              </button>
+            </div>
+
+            {/* Create User Form */}
+            {showCreateUser && (
+              <div style={{ borderRadius: 14, padding: 24, background: "oklch(0.13 0.025 250)", border: `1px solid ${TEAL}33`, marginBottom: 20 }}>
+                <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 15, color: TEAL, margin: "0 0 16px", letterSpacing: 1 }}>NEW USER</p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                  <div>
+                    <label style={{ display: "block", fontFamily: "JetBrains Mono, monospace", fontSize: 10, color: "oklch(0.50 0.03 250)", marginBottom: 6, letterSpacing: 1 }}>DISPLAY NAME</label>
+                    <input value={createUserForm.name} onChange={e => setCreateUserForm(f => ({ ...f, name: e.target.value }))} placeholder="Nguyễn Văn A" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid oklch(0.22 0.03 250)", background: "oklch(0.10 0.02 250)", color: "oklch(0.90 0.01 250)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontFamily: "JetBrains Mono, monospace", fontSize: 10, color: "oklch(0.50 0.03 250)", marginBottom: 6, letterSpacing: 1 }}>EMAIL</label>
+                    <input type="email" value={createUserForm.email} onChange={e => setCreateUserForm(f => ({ ...f, email: e.target.value }))} placeholder="user@example.com" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid oklch(0.22 0.03 250)", background: "oklch(0.10 0.02 250)", color: "oklch(0.90 0.01 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontFamily: "JetBrains Mono, monospace", fontSize: 10, color: "oklch(0.50 0.03 250)", marginBottom: 6, letterSpacing: 1 }}>PASSWORD</label>
+                    <input type="password" value={createUserForm.password} onChange={e => setCreateUserForm(f => ({ ...f, password: e.target.value }))} placeholder="••••••••" style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid oklch(0.22 0.03 250)", background: "oklch(0.10 0.02 250)", color: "oklch(0.90 0.01 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontFamily: "JetBrains Mono, monospace", fontSize: 10, color: "oklch(0.50 0.03 250)", marginBottom: 6, letterSpacing: 1 }}>ROLE</label>
+                    <select value={createUserForm.role} onChange={e => setCreateUserForm(f => ({ ...f, role: e.target.value }))} style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid oklch(0.22 0.03 250)", background: "oklch(0.10 0.02 250)", color: "oklch(0.90 0.01 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 13, outline: "none", boxSizing: "border-box", cursor: "pointer" }}>
+                      <option value="ROLE_USER">Student</option>
+                      <option value="ROLE_PREMIUM">Premium</option>
+                      <option value="ROLE_ADMIN">Admin</option>
+                    </select>
+                  </div>
+                </div>
+                {createUserError && <p style={{ color: "#f87171", fontSize: 12, fontFamily: "JetBrains Mono, monospace", margin: "0 0 10px" }}>❌ {createUserError}</p>}
+                {createUserSuccess && <p style={{ color: "#34d399", fontSize: 12, fontFamily: "JetBrains Mono, monospace", margin: "0 0 10px" }}>✅ {createUserSuccess}</p>}
+                <button
+                  disabled={createUserLoading || !createUserForm.name || !createUserForm.email || !createUserForm.password}
+                  onClick={async () => {
+                    setCreateUserLoading(true);
+                    setCreateUserError('');
+                    setCreateUserSuccess('');
+                    try {
+                      await api.createUser(createUserForm);
+                      setCreateUserSuccess(`User "${createUserForm.name}" created successfully!`);
+                      setCreateUserForm({ name: '', email: '', password: '', role: 'ROLE_USER' });
+                      fetchUsers(usersPage, userSearch);
+                      setTimeout(() => { setCreateUserSuccess(''); setShowCreateUser(false); }, 2000);
+                    } catch (e: any) {
+                      setCreateUserError(e.message || 'Failed to create user');
+                    } finally {
+                      setCreateUserLoading(false);
+                    }
+                  }}
+                  style={{ padding: "10px 24px", borderRadius: 8, border: "none", background: (!createUserForm.name || !createUserForm.email || !createUserForm.password) ? 'oklch(0.25 0.03 250)' : TEAL, color: (!createUserForm.name || !createUserForm.email || !createUserForm.password) ? 'oklch(0.45 0.03 250)' : '#000', fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: (!createUserForm.name || !createUserForm.email || !createUserForm.password) ? 'not-allowed' : 'pointer', opacity: createUserLoading ? 0.7 : 1 }}
+                >
+                  {createUserLoading ? 'Creating...' : 'Create User'}
+                </button>
+              </div>
+            )}
+
             <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
               <input
                 value={userSearch} onChange={e => setUserSearch(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { setUsersPage(1); fetchUsers(1, userSearch); } }}
                 placeholder="Search by name or email…"
                 style={{ flex: 1, padding: "10px 14px", borderRadius: 10, background: "oklch(0.12 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.85 0.01 250)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" }}
               />
+              <button onClick={() => { setUsersPage(1); fetchUsers(1, userSearch); }} style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Search</button>
               <span style={{ padding: "10px 14px", borderRadius: 10, background: "oklch(0.12 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.45 0.03 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 12, display: "flex", alignItems: "center" }}>
-                {adminUsers.filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase()) || u.email.toLowerCase().includes(userSearch.toLowerCase())).length} results
+                {users.length} results
               </span>
             </div>
+            {usersLoading ? (
+              <div style={{ textAlign: "center", padding: 40, color: "oklch(0.50 0.03 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 13 }}>Loading users...</div>
+            ) : users.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 40, color: "oklch(0.50 0.03 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 13 }}>No users found</div>
+            ) : (
             <div style={{ borderRadius: 14, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.20 0.03 250)", overflow: "hidden" }}>
               <table style={{ width: "100%", borderCollapse: "collapse" }}>
                 <thead>
                   <tr style={{ borderBottom: "1px solid oklch(0.18 0.03 250)" }}>
-                    {["User", "Email", "Level", "Streak", "Joined", "Role", "Actions"].map(h => (
+                    {["User", "Email", "Streak", "Joined", "Role", "Actions"].map(h => (
                       <th key={h} style={{ padding: "12px 16px", textAlign: "left", fontSize: 10, color: "oklch(0.42 0.03 250)", fontFamily: "JetBrains Mono, monospace", letterSpacing: 1, fontWeight: 600 }}>{h.toUpperCase()}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {adminUsers
-                    .filter(u => u.name.toLowerCase().includes(userSearch.toLowerCase()) || u.email.toLowerCase().includes(userSearch.toLowerCase()))
+                  {users
                     .map(u => {
                       const isDeactivated = deactivatedUsers.has(u.id);
                       const currentRole = userRoleEdits[u.id] ?? u.role;
@@ -1945,7 +2318,6 @@ function AdminPanel({ lang }: { lang: Lang }) {
                             </button>
                           </td>
                           <td style={{ padding: "12px 16px", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "oklch(0.50 0.03 250)" }}>{u.email}</td>
-                          <td style={{ padding: "12px 16px", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: TEAL }}>{u.level}</td>
                           <td style={{ padding: "12px 16px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                               <Flame size={12} color={AMBER} />
@@ -1967,10 +2339,24 @@ function AdminPanel({ lang }: { lang: Lang }) {
                           <td style={{ padding: "12px 16px" }}>
                             <div style={{ display: "flex", gap: 6 }}>
                               {userRoleEdits[u.id] && (
-                                <button onClick={() => setUserRoleEdits(prev => { const n = { ...prev }; delete n[u.id]; return n; })} style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Save</button>
+                                <button onClick={async () => {
+                                  try {
+                                    const roleMap: Record<string, string> = { admin: 'ROLE_ADMIN', premium: 'ROLE_PREMIUM', student: 'ROLE_USER' };
+                                    await api.updateUserRole(u.id, roleMap[userRoleEdits[u.id]] || 'ROLE_USER');
+                                    setUserRoleEdits(prev => { const n = { ...prev }; delete n[u.id]; return n; });
+                                    fetchUsers(usersPage, userSearch);
+                                  } catch (e) { console.error('Failed to update role:', e); }
+                                }} style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Save</button>
                               )}
-                              <button onClick={() => setDeactivatedUsers(prev => { const n = new Set(prev); isDeactivated ? n.delete(u.id) : n.add(u.id); return n; })} style={{ padding: "4px 10px", borderRadius: 6, border: `1px solid ${isDeactivated ? "#34d39944" : "#f8717144"}`, background: isDeactivated ? "#34d39910" : "#f8717110", color: isDeactivated ? "#34d399" : "#f87171", fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>
-                                {isDeactivated ? "Activate" : "Deactivate"}
+                              <button onClick={async () => {
+                                if (confirm('Are you sure you want to delete this user?')) {
+                                  try {
+                                    await api.deleteUser(u.id);
+                                    fetchUsers(usersPage, userSearch);
+                                  } catch (e) { console.error('Failed to delete user:', e); }
+                                }
+                              }} style={{ padding: "4px 10px", borderRadius: 6, border: "1px solid #f8717144", background: "#f8717110", color: "#f87171", fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>
+                                Delete
                               </button>
                             </div>
                           </td>
@@ -1981,11 +2367,21 @@ function AdminPanel({ lang }: { lang: Lang }) {
                 </tbody>
               </table>
             </div>
+            )}
+            {/* Pagination */}
+            {usersTotalPages > 1 && (
+              <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 16 }}>
+                <button disabled={usersPage <= 1} onClick={() => setUsersPage(p => p - 1)} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid oklch(0.22 0.03 250)", background: "oklch(0.12 0.02 250)", color: usersPage <= 1 ? "oklch(0.30 0.03 250)" : TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 12, cursor: usersPage <= 1 ? "not-allowed" : "pointer" }}>← Prev</button>
+                <span style={{ padding: "6px 14px", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "oklch(0.55 0.03 250)", display: "flex", alignItems: "center" }}>Page {usersPage} / {usersTotalPages}</span>
+                <button disabled={usersPage >= usersTotalPages} onClick={() => setUsersPage(p => p + 1)} style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid oklch(0.22 0.03 250)", background: "oklch(0.12 0.02 250)", color: usersPage >= usersTotalPages ? "oklch(0.30 0.03 250)" : TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 12, cursor: usersPage >= usersTotalPages ? "not-allowed" : "pointer" }}>Next →</button>
+              </div>
+            )}
           </div>
         )}
 
         {section === "users-detail" && (() => {
-          const u = adminUsers.find(u => u.id === selectedUserId) ?? adminUsers[0];
+          const u = users.find(u => u.id === selectedUserId) ?? users[0];
+          if (!u) return <div style={{ color: 'oklch(0.50 0.03 250)', fontFamily: 'JetBrains Mono, monospace', textAlign: 'center', padding: 40 }}>User not found</div>;
           const currentRole = userRoleEdits[u.id] ?? u.role;
           const typeColor = (t: string) => t === "Lesson" ? TEAL : t === "TechTalk" ? "#a78bfa" : t === "Pronunciation" ? "#34d399" : t === "MemByte" ? AMBER : "oklch(0.50 0.03 250)";
           return (
@@ -1999,25 +2395,24 @@ function AdminPanel({ lang }: { lang: Lang }) {
                   <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 20, color: "oklch(0.92 0.01 250)", margin: "0 0 4px" }}>{u.name}</p>
                   <p style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "oklch(0.50 0.03 250)", margin: "0 0 8px" }}>{u.email}</p>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <KBadge color={TEAL}>{u.level}</KBadge>
                     <KBadge color={currentRole === "admin" ? AMBER : currentRole === "premium" ? TEAL : "oklch(0.50 0.03 250)"}>{currentRole}</KBadge>
                     <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 12, color: AMBER, fontFamily: "JetBrains Mono, monospace" }}><Flame size={12} color={AMBER} />{u.streak} day streak</span>
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
                   <div style={{ textAlign: "center" }}>
-                    <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 22, color: TEAL, margin: "0 0 2px" }}>1,250</p>
+                    <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 22, color: TEAL, margin: "0 0 2px" }}>{u.stats?.totalStudyMinutes?.toLocaleString() ?? '0'}</p>
                     <p style={{ fontSize: 10, color: "oklch(0.42 0.03 250)", fontFamily: "JetBrains Mono, monospace", margin: 0 }}>MINUTES</p>
                   </div>
                   <div style={{ width: 1, background: "oklch(0.20 0.03 250)" }} />
                   <div style={{ textAlign: "center" }}>
-                    <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 22, color: "#a78bfa", margin: "0 0 2px" }}>3,400</p>
+                    <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 22, color: "#a78bfa", margin: "0 0 2px" }}>{u.stats?.totalCardsReviewed?.toLocaleString() ?? '0'}</p>
                     <p style={{ fontSize: 10, color: "oklch(0.42 0.03 250)", fontFamily: "JetBrains Mono, monospace", margin: 0 }}>CARDS</p>
                   </div>
                   <div style={{ width: 1, background: "oklch(0.20 0.03 250)" }} />
                   <div style={{ textAlign: "center" }}>
-                    <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 22, color: "#34d399", margin: "0 0 2px" }}>88%</p>
-                    <p style={{ fontSize: 10, color: "oklch(0.42 0.03 250)", fontFamily: "JetBrains Mono, monospace", margin: 0 }}>RETENTION</p>
+                    <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 22, color: "#34d399", margin: "0 0 2px" }}>{u.stats?.totalVideosWatched ?? '0'}</p>
+                    <p style={{ fontSize: 10, color: "oklch(0.42 0.03 250)", fontFamily: "JetBrains Mono, monospace", margin: 0 }}>VIDEOS</p>
                   </div>
                 </div>
               </div>
@@ -2060,9 +2455,24 @@ function AdminPanel({ lang }: { lang: Lang }) {
                     <option value="premium">premium</option>
                     <option value="admin">admin</option>
                   </select>
-                  <button style={{ width: "100%", padding: "9px", borderRadius: 8, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 8 }}>Save Role</button>
-                  <button onClick={() => setDeactivatedUsers(prev => { const n = new Set(prev); deactivatedUsers.has(u.id) ? n.delete(u.id) : n.add(u.id); return n; })} style={{ width: "100%", padding: "9px", borderRadius: 8, border: "1px solid #f8717144", background: "#f8717110", color: "#f87171", fontFamily: "Outfit, sans-serif", fontSize: 13, cursor: "pointer" }}>
-                    {deactivatedUsers.has(u.id) ? "Reactivate" : "Deactivate User"}
+                  <button onClick={async () => {
+                    try {
+                      const roleMap: Record<string, string> = { admin: 'ROLE_ADMIN', premium: 'ROLE_PREMIUM', student: 'ROLE_USER' };
+                      await api.updateUserRole(u.id, roleMap[currentRole] || 'ROLE_USER');
+                      setUserRoleEdits(prev => { const n = { ...prev }; delete n[u.id]; return n; });
+                      fetchUsers(usersPage, userSearch);
+                    } catch (e) { console.error('Failed to update role:', e); }
+                  }} style={{ width: "100%", padding: "9px", borderRadius: 8, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", marginBottom: 8 }}>Save Role</button>
+                  <button onClick={async () => {
+                    if (confirm('Are you sure you want to delete this user?')) {
+                      try {
+                        await api.deleteUser(u.id);
+                        setSection('users');
+                        fetchUsers(usersPage, userSearch);
+                      } catch (e) { console.error('Failed to delete user:', e); }
+                    }
+                  }} style={{ width: "100%", padding: "9px", borderRadius: 8, border: "1px solid #f8717144", background: "#f8717110", color: "#f87171", fontFamily: "Outfit, sans-serif", fontSize: 13, cursor: "pointer" }}>
+                    Delete User
                   </button>
                 </div>
               </div>
@@ -2074,32 +2484,73 @@ function AdminPanel({ lang }: { lang: Lang }) {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <h1 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 24, color: "oklch(0.92 0.01 250)", margin: 0 }}>Topics</h1>
-              <button onClick={() => setShowAddTopic(v => !v)} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+              <button onClick={openNewTopic} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
                 <Plus size={15} /> New Topic
               </button>
             </div>
             {showAddTopic && (
-              <AddForm title="NEW TOPIC" fields={[
-                { label: "Title (Korean)", placeholder: "CSS Grid & Flexbox 용어" },
-                { label: "Title (Vietnamese)", placeholder: "Thuật ngữ CSS Grid & Flexbox" },
-                { label: "Domain", placeholder: "frontend", type: "select" },
-                { label: "Difficulty", placeholder: "intermediate" },
-              ]} onSave={() => setShowAddTopic(false)} onCancel={() => setShowAddTopic(false)} />
+              <form onSubmit={event => { event.preventDefault(); void saveTopic(); }} style={{ borderRadius: 14, padding: 20, background: "oklch(0.13 0.025 250)", border: `1px solid ${TEAL}30`, marginBottom: 20 }}>
+                <p style={{ fontSize: 11, color: TEAL, fontFamily: "JetBrains Mono, monospace", letterSpacing: 1, margin: "0 0 14px" }}>{editingTopicId ? "EDIT TOPIC" : "NEW TOPIC"}</p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                  <label style={{ display: "grid", gap: 5 }}>
+                    <span style={{ fontSize: 11, color: "oklch(0.48 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>Title (Korean)</span>
+                    <input required value={topicForm.title} onChange={event => setTopicForm(current => ({ ...current, title: event.target.value }))} placeholder="CSS Grid & Flexbox 용어" style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.80 0.01 250)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+                  </label>
+                  <label style={{ display: "grid", gap: 5 }}>
+                    <span style={{ fontSize: 11, color: "oklch(0.48 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>Title (Vietnamese)</span>
+                    <input required value={topicForm.titleVi} onChange={event => setTopicForm(current => ({ ...current, titleVi: event.target.value }))} placeholder="Thuật ngữ CSS Grid & Flexbox" style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.80 0.01 250)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+                  </label>
+                  <label style={{ display: "grid", gap: 5 }}>
+                    <span style={{ fontSize: 11, color: "oklch(0.48 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>Domain</span>
+                    <select value={topicForm.domain} onChange={event => setTopicForm(current => ({ ...current, domain: event.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.80 0.01 250)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" }}>
+                      <option value="frontend">frontend</option><option value="backend">backend</option><option value="devops">devops</option><option value="agile">agile</option>
+                    </select>
+                  </label>
+                  <label style={{ display: "grid", gap: 5 }}>
+                    <span style={{ fontSize: 11, color: "oklch(0.48 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>Order</span>
+                    <input required type="number" min="0" step="1" value={topicForm.order} onChange={event => setTopicForm(current => ({ ...current, order: event.target.value }))} style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.80 0.01 250)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+                  </label>
+                  <label style={{ display: "grid", gap: 5, gridColumn: "1 / -1" }}>
+                    <span style={{ fontSize: 11, color: "oklch(0.48 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>Description</span>
+                    <textarea value={topicForm.description} onChange={event => setTopicForm(current => ({ ...current, description: event.target.value }))} rows={3} placeholder="Describe the learning topic" style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.80 0.01 250)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box", resize: "vertical" }} />
+                  </label>
+                  <label style={{ display: "grid", gap: 5 }}>
+                    <span style={{ fontSize: 11, color: "oklch(0.48 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>Prerequisite topic IDs</span>
+                    <input value={topicForm.prerequisiteTopicIds} onChange={event => setTopicForm(current => ({ ...current, prerequisiteTopicIds: event.target.value }))} placeholder="id-1, id-2" style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.80 0.01 250)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+                  </label>
+                  <label style={{ display: "grid", gap: 5 }}>
+                    <span style={{ fontSize: 11, color: "oklch(0.48 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>Tags</span>
+                    <input value={topicForm.tags} onChange={event => setTopicForm(current => ({ ...current, tags: event.target.value }))} placeholder="CSS, layout" style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.80 0.01 250)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none", boxSizing: "border-box" }} />
+                  </label>
+                </div>
+                <label style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 14, color: "oklch(0.72 0.01 250)", fontSize: 12, cursor: "pointer" }}>
+                  <input type="checkbox" checked={topicForm.isActive} onChange={event => setTopicForm(current => ({ ...current, isActive: event.target.checked }))} /> Active and visible to learners
+                </label>
+                {topicFormError && <p role="alert" style={{ margin: "0 0 12px", color: "#f87171", fontSize: 12 }}>{topicFormError}</p>}
+                <div style={{ display: "flex", gap: 10 }}>
+                  <button type="submit" disabled={topicSaving} style={{ padding: "9px 20px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: topicSaving ? "wait" : "pointer", opacity: topicSaving ? 0.65 : 1 }}>{topicSaving ? "Saving..." : "Save"}</button>
+                  <button type="button" onClick={() => { setShowAddTopic(false); setEditingTopicId(null); setTopicFormError(""); }} disabled={topicSaving} style={{ padding: "9px 20px", borderRadius: 10, border: "1px solid oklch(0.25 0.03 250)", background: "none", color: "oklch(0.55 0.03 250)", fontFamily: "Outfit, sans-serif", fontSize: 13, cursor: "pointer" }}>Cancel</button>
+                </div>
+              </form>
             )}
-            <AdminTable headers={["#", "Title KR", "Domain", "Difficulty", "Lessons", ""]}>
-              {adminTopics.map(t => (
+            {topicsError && <p role="alert" style={{ margin: "0 0 12px", color: "#f87171", fontSize: 12 }}>{topicsError}</p>}
+            <AdminTable headers={["#", "Title", "Domain", "Status", "Tags", ""]}>
+              {topicsLoading && <TR><td colSpan={6} style={{ padding: "24px 16px", textAlign: "center", color: "oklch(0.50 0.03 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>Loading topics...</td></TR>}
+              {!topicsLoading && topics.length === 0 && <TR><td colSpan={6} style={{ padding: "24px 16px", textAlign: "center", color: "oklch(0.50 0.03 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>No topics found.</td></TR>}
+              {!topicsLoading && topics.map(t => (
                 <TR key={t.id}>
                   <AdminTd mono>{t.order}</AdminTd>
                   <td style={{ padding: "12px 16px" }}>
                     <p style={{ fontSize: 13, color: "oklch(0.88 0.01 250)", margin: "0 0 2px" }}>{t.title}</p>
                     <p style={{ fontSize: 11, color: "oklch(0.45 0.03 250)", margin: 0, fontFamily: "JetBrains Mono, monospace" }}>{t.titleVi}</p>
+                    {t.description && <p style={{ fontSize: 11, color: "oklch(0.48 0.03 250)", margin: "5px 0 0" }}>{t.description}</p>}
                   </td>
                   <td style={{ padding: "12px 16px" }}><KBadge color={domainColor(t.domain)}>{t.domain}</KBadge></td>
-                  <td style={{ padding: "12px 16px" }}><KBadge color={diffColor(t.difficulty)}>{t.difficulty}</KBadge></td>
-                  <AdminTd mono>{t.lessonCount}</AdminTd>
+                  <td style={{ padding: "12px 16px" }}><KBadge color={t.isActive ? "#34d399" : "#f87171"}>{t.isActive ? "active" : "inactive"}</KBadge></td>
+                  <AdminTd mono>{(t.tags ?? []).join(", ") || "—"}</AdminTd>
                   <td style={{ padding: "12px 16px", display: "flex", gap: 6 }}>
-                    <button style={{ padding: "5px 10px", borderRadius: 7, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Edit</button>
-                    <button style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid #f8717144", background: "#f8717110", color: "#f87171", fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Delete</button>
+                    <button onClick={() => openEditTopic(t)} style={{ padding: "5px 10px", borderRadius: 7, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Edit</button>
+                    <button onClick={() => void deleteTopic(t)} style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid #f8717144", background: "#f8717110", color: "#f87171", fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Delete</button>
                   </td>
                 </TR>
               ))}
@@ -2109,163 +2560,78 @@ function AdminPanel({ lang }: { lang: Lang }) {
 
         {section === "content-lessons" && (
           <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-              <h1 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 24, color: "oklch(0.92 0.01 250)", margin: 0 }}>Lessons</h1>
-              <button onClick={() => setShowAddLesson(v => !v)} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-                <Plus size={15} /> New Lesson
-              </button>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
+              <div>
+                <h1 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 24, color: "oklch(0.92 0.01 250)", margin: 0 }}>Lessons</h1>
+                <p style={{ margin: "4px 0 0", fontSize: 12, color: "oklch(0.46 0.03 250)" }}>Manage lessons linked to real Topics.</p>
+              </div>
+              <button onClick={openNewLesson} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}><Plus size={15} /> New Lesson</button>
             </div>
+
+            <div style={{ display: "flex", gap: 10, marginBottom: 16, alignItems: "center" }}>
+              <label style={{ fontSize: 11, color: "oklch(0.50 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>TOPIC FILTER</label>
+              <select value={lessonFilterTopicId} onChange={event => setLessonFilterTopicId(event.target.value)} style={{ minWidth: 250, padding: "8px 10px", borderRadius: 8, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.80 0.01 250)" }}>
+                <option value="">All topics</option>
+                {topics.map(topic => <option key={topic.id} value={topic.id}>{topic.title} · {topic.domain}</option>)}
+              </select>
+            </div>
+
             {showAddLesson && (
-              <AddForm title="NEW LESSON" fields={[
-                { label: "Title (Korean)", placeholder: "Flexbox 방향 속성" },
-                { label: "Topic", placeholder: "CSS Grid & Flexbox" },
-                { label: "Domain", placeholder: "frontend", type: "select" },
-                { label: "Estimated minutes", placeholder: "15" },
-              ]} onSave={() => setShowAddLesson(false)} onCancel={() => setShowAddLesson(false)} />
-            )}
-            <AdminTable headers={["Title", "Topic", "Domain", "Vocab", "Exercises", "Est.", ""]}>
-              {adminLessons.map(l => (
-                <TR key={l.id}>
-                  <AdminTd>{l.title}</AdminTd>
-                  <AdminTd mono>{l.topic}</AdminTd>
-                  <td style={{ padding: "12px 16px" }}><KBadge color={domainColor(l.domain)}>{l.domain}</KBadge></td>
-                  <AdminTd mono>{l.vocabCount} terms</AdminTd>
-                  <AdminTd mono>{l.exerciseCount}</AdminTd>
-                  <AdminTd mono>{l.estMins}m</AdminTd>
-                  <td style={{ padding: "12px 16px" }}>
-                    <button onClick={() => setEditingLessonId(editingLessonId === l.id ? null : l.id)} style={{ padding: "5px 10px", borderRadius: 7, border: `1px solid ${editingLessonId === l.id ? TEAL : `${TEAL}44`}`, background: editingLessonId === l.id ? TEAL : `${TEAL}10`, color: editingLessonId === l.id ? "#000" : TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>
-                      {editingLessonId === l.id ? "Close" : "Edit"}
-                    </button>
-                  </td>
-                </TR>
-              ))}
-            </AdminTable>
-            {editingLessonId && (
-              <div style={{ marginTop: 20, borderRadius: 14, background: "oklch(0.13 0.025 250)", border: `1px solid ${TEAL}30`, overflow: "hidden" }}>
-                <div style={{ padding: "14px 20px", borderBottom: "1px solid oklch(0.18 0.03 250)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 600, fontSize: 14, color: "oklch(0.82 0.01 250)", margin: 0 }}>
-                    Lesson Editor — {adminLessons.find(l => l.id === editingLessonId)?.title}
-                  </p>
-                  <button onClick={() => setEditingLessonId(null)} style={{ background: "none", border: "none", cursor: "pointer", color: "oklch(0.42 0.03 250)", display: "flex", alignItems: "center" }}><X size={16} /></button>
+              <form onSubmit={event => { event.preventDefault(); void saveLesson(); }} style={{ borderRadius: 14, padding: 20, background: "oklch(0.13 0.025 250)", border: `1px solid ${TEAL}35`, marginBottom: 20 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                  <p style={{ fontSize: 11, color: TEAL, fontFamily: "JetBrains Mono, monospace", letterSpacing: 1, margin: 0 }}>{editingLessonId ? "EDIT LESSON" : "NEW LESSON"}</p>
+                  <button type="button" onClick={() => { setShowAddLesson(false); setEditingLessonId(null); setLessonFormError(""); }} aria-label="Close lesson editor" style={{ border: "none", background: "none", color: "oklch(0.52 0.03 250)", cursor: "pointer" }}><X size={17} /></button>
                 </div>
-                <div style={{ display: "flex", borderBottom: "1px solid oklch(0.18 0.03 250)" }}>
-                  {(["vocab", "exercises", "preview"] as const).map(tab => (
-                    <button key={tab} onClick={() => setLessonEditorTab(tab)} style={{ padding: "10px 20px", border: "none", background: "none", cursor: "pointer", fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: lessonEditorTab === tab ? TEAL : "oklch(0.42 0.03 250)", borderBottom: `2px solid ${lessonEditorTab === tab ? TEAL : "transparent"}`, textTransform: "capitalize", letterSpacing: 0.5 }}>
-                      {tab === "vocab" ? "Vocabulary" : tab === "exercises" ? "Exercises" : "Preview"}
-                    </button>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
+                  {[["Topic", "topicId"], ["Title (Korean)", "title"], ["Title (Vietnamese)", "titleVi"], ["Order", "order"]].map(([label, field]) => (
+                    <label key={field} style={{ display: "grid", gap: 5 }}>
+                      <span style={{ fontSize: 11, color: "oklch(0.50 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>{label}</span>
+                      {field === "topicId" ? (
+                        <select required value={lessonForm.topicId} onChange={event => setLessonForm(current => ({ ...current, topicId: event.target.value }))} style={{ padding: "10px 12px", borderRadius: 8, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.80 0.01 250)" }}>
+                          <option value="">Select a Topic</option>
+                          {topics.map(topic => <option key={topic.id} value={topic.id}>{topic.title} · {topic.titleVi} · {topic.domain}</option>)}
+                        </select>
+                      ) : (
+                        <input required={field !== "order"} type={field === "order" ? "number" : "text"} min={field === "order" ? 0 : undefined} value={(lessonForm as any)[field]} onChange={event => setLessonForm(current => ({ ...current, [field]: event.target.value }))} style={{ padding: "10px 12px", borderRadius: 8, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.80 0.01 250)", boxSizing: "border-box" }} />
+                      )}
+                    </label>
+                  ))}
+                  {[["Content (Korean)", "content"], ["Content (Vietnamese)", "contentVi"]].map(([label, field]) => (
+                    <label key={field} style={{ display: "grid", gap: 5 }}><span style={{ fontSize: 11, color: "oklch(0.50 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>{label}</span><textarea value={(lessonForm as any)[field]} onChange={event => setLessonForm(current => ({ ...current, [field]: event.target.value }))} rows={4} style={{ padding: "10px 12px", borderRadius: 8, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.80 0.01 250)", resize: "vertical" }} /></label>
                   ))}
                 </div>
-                <div style={{ padding: 20 }}>
-                  {lessonEditorTab === "vocab" && (
-                    <>
-                      <div style={{ overflowX: "auto" }}>
-                        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
-                          <thead>
-                            <tr style={{ borderBottom: "1px solid oklch(0.18 0.03 250)" }}>
-                              {["Korean", "Vietnamese", "Pronunciation", "IT Context", "Code Snippet"].map(h => (
-                                <th key={h} style={{ padding: "8px 12px", textAlign: "left", fontSize: 10, color: "oklch(0.42 0.03 250)", fontFamily: "JetBrains Mono, monospace", fontWeight: 600 }}>{h.toUpperCase()}</th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {lessonVocab.map((v, i) => (
-                              <tr key={i} style={{ borderBottom: "1px solid oklch(0.15 0.025 250)" }}>
-                                <td style={{ padding: "8px 12px" }}><span style={{ fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 16, color: TEAL }}>{v.korean}</span></td>
-                                <td style={{ padding: "8px 12px", fontSize: 12, color: "oklch(0.75 0.01 250)" }}>{v.vietnamese}</td>
-                                <td style={{ padding: "8px 12px", fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: "oklch(0.50 0.03 250)" }}>/{v.pronunciation}/</td>
-                                <td style={{ padding: "8px 12px", fontSize: 11, color: "oklch(0.55 0.03 250)", maxWidth: 200 }}>{v.itContext}</td>
-                                <td style={{ padding: "8px 12px" }}>
-                                  <code style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 10, color: TEAL, background: "oklch(0.10 0.02 250)", padding: "2px 6px", borderRadius: 4 }}>{v.code}</code>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      <button style={{ marginTop: 12, padding: "7px 14px", borderRadius: 8, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-                        <Plus size={12} /> Add Vocabulary Term
-                      </button>
-                    </>
-                  )}
-                  {lessonEditorTab === "exercises" && (
-                    <div>
-                      {lessonExercises.map((ex, i) => (
-                        <div key={ex.id} style={{ borderRadius: 12, padding: 16, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.18 0.03 250)", marginBottom: 12 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                            <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 10, color: "oklch(0.35 0.03 250)" }}>#{i + 1}</span>
-                            <KBadge color={ex.type === "multiple_choice" ? TEAL : ex.type === "fill_blank" ? AMBER : "#a78bfa"}>
-                              {ex.type === "multiple_choice" ? "Multiple Choice" : ex.type === "fill_blank" ? "Fill in Blank" : "Matching"}
-                            </KBadge>
-                            <button style={{ marginLeft: "auto", background: "none", border: "none", cursor: "pointer", color: "#f87171", fontSize: 11, fontFamily: "JetBrains Mono, monospace" }}>Delete</button>
-                          </div>
-                          {ex.type === "multiple_choice" && (
-                            <>
-                              <p style={{ fontSize: 13, color: "oklch(0.82 0.01 250)", margin: "0 0 10px" }}>{ex.question}</p>
-                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                                {ex.options?.map((opt, oi) => (
-                                  <div key={oi} style={{ padding: "7px 12px", borderRadius: 8, background: oi === ex.correct ? `${TEAL}18` : "oklch(0.13 0.02 250)", border: `1px solid ${oi === ex.correct ? TEAL : "oklch(0.22 0.03 250)"}`, fontSize: 12, color: oi === ex.correct ? TEAL : "oklch(0.65 0.01 250)", display: "flex", alignItems: "center", gap: 6 }}>
-                                    {oi === ex.correct && <CheckCircle size={12} color={TEAL} />}
-                                    {opt}
-                                  </div>
-                                ))}
-                              </div>
-                            </>
-                          )}
-                          {ex.type === "fill_blank" && (
-                            <p style={{ fontSize: 13, color: "oklch(0.82 0.01 250)", margin: 0 }}>
-                              {ex.question} <span style={{ fontFamily: "JetBrains Mono, monospace", color: TEAL, background: `${TEAL}18`, padding: "1px 8px", borderRadius: 4 }}>{ex.answer}</span>
-                            </p>
-                          )}
-                          {ex.type === "matching" && (
-                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
-                              {ex.pairs?.map(([kr, vi], pi) => (
-                                <React.Fragment key={pi}>
-                                  <div style={{ padding: "7px 12px", borderRadius: 8, background: `${TEAL}12`, border: `1px solid ${TEAL}30`, fontSize: 12, color: TEAL, fontFamily: "JetBrains Mono, monospace" }}>{kr}</div>
-                                  <div style={{ padding: "7px 12px", borderRadius: 8, background: "oklch(0.13 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", fontSize: 12, color: "oklch(0.70 0.01 250)" }}>{vi}</div>
-                                </React.Fragment>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                      <div style={{ display: "flex", gap: 8 }}>
-                        {["+ Multiple Choice", "+ Fill in Blank", "+ Matching"].map(label => (
-                          <button key={label} style={{ padding: "7px 12px", borderRadius: 8, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>{label}</button>
-                        ))}
-                      </div>
+
+                <div style={{ marginTop: 20 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}><p style={{ margin: 0, color: "oklch(0.82 0.01 250)", fontWeight: 700 }}>Vocabulary</p><button type="button" onClick={() => setLessonForm(current => ({ ...current, vocabulary: [...current.vocabulary, emptyVocabulary()] }))} style={{ padding: "6px 10px", borderRadius: 7, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, cursor: "pointer" }}>+ Add term</button></div>
+                  {lessonForm.vocabulary.map((item, index) => (
+                    <div key={item.id ?? index} style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 1fr)) auto", gap: 8, padding: 10, marginBottom: 8, borderRadius: 10, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.18 0.03 250)" }}>
+                      {["korean", "pronunciation", "vietnamese", "english", "context", "codeSnippet", "audioUrl"].map(field => <input key={field} placeholder={field} value={(item as any)[field] ?? ""} onChange={event => setLessonForm(current => ({ ...current, vocabulary: current.vocabulary.map((value, i) => i === index ? { ...value, [field]: event.target.value } : value) }))} style={{ padding: "8px", borderRadius: 6, minWidth: 0, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.80 0.01 250)" }} />)}
+                      <button type="button" onClick={() => setLessonForm(current => ({ ...current, vocabulary: current.vocabulary.filter((_, i) => i !== index) }))} aria-label="Remove vocabulary term" style={{ border: "none", background: "none", color: "#f87171", cursor: "pointer" }}><X size={16} /></button>
                     </div>
-                  )}
-                  {lessonEditorTab === "preview" && (
-                    <div style={{ display: "flex", justifyContent: "center" }}>
-                      <div style={{ width: 320, borderRadius: 32, background: "oklch(0.08 0.02 250)", border: "8px solid oklch(0.16 0.03 250)", overflow: "hidden", boxShadow: "0 20px 60px #00000060" }}>
-                        <div style={{ background: "oklch(0.10 0.02 250)", padding: "14px 16px", borderBottom: "1px solid oklch(0.16 0.025 250)" }}>
-                          <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, color: TEAL, margin: 0 }}>Flexbox 방향 속성</p>
-                          <div style={{ height: 4, borderRadius: 2, background: "oklch(0.16 0.025 250)", marginTop: 8 }}>
-                            <div style={{ height: "100%", width: "40%", borderRadius: 2, background: `linear-gradient(90deg, ${TEAL}, #38bdf8)` }} />
-                          </div>
-                        </div>
-                        <div style={{ padding: 16 }}>
-                          {lessonVocab.map((v, i) => (
-                            <div key={i} style={{ borderRadius: 12, padding: 12, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.18 0.03 250)", marginBottom: 10 }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                                <span style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 18, color: TEAL }}>{v.korean}</span>
-                                <Volume2 size={14} color="oklch(0.40 0.03 250)" />
-                              </div>
-                              <p style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 10, color: "oklch(0.40 0.03 250)", margin: "0 0 4px" }}>/{v.pronunciation}/</p>
-                              <p style={{ fontSize: 11, color: "oklch(0.70 0.01 250)", margin: "0 0 6px" }}>{v.vietnamese}</p>
-                              <code style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 9, color: TEAL, background: "oklch(0.08 0.02 250)", padding: "2px 6px", borderRadius: 4 }}>{v.code}</code>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                  ))}
                 </div>
-              </div>
+
+                <div style={{ marginTop: 20 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}><p style={{ margin: 0, color: "oklch(0.82 0.01 250)", fontWeight: 700 }}>Exercises</p><div style={{ display: "flex", gap: 6 }}><button type="button" onClick={() => setLessonForm(current => ({ ...current, exercises: [...current.exercises, emptyExercise()] }))} style={{ padding: "6px 10px", borderRadius: 7, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, cursor: "pointer" }}>+ Multiple choice</button><button type="button" onClick={() => setLessonForm(current => ({ ...current, exercises: [...current.exercises, { ...emptyExercise(), type: "fill_blank", options: [] }] }))} style={{ padding: "6px 10px", borderRadius: 7, border: `1px solid ${AMBER}44`, background: `${AMBER}10`, color: AMBER, cursor: "pointer" }}>+ Fill blank</button></div></div>
+                  {lessonForm.exercises.map((exercise, index) => (
+                    <div key={exercise.id ?? index} style={{ padding: 12, marginBottom: 8, borderRadius: 10, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.18 0.03 250)" }}>
+                      <div style={{ display: "flex", gap: 8, marginBottom: 8 }}><select value={exercise.type} onChange={event => setLessonForm(current => ({ ...current, exercises: current.exercises.map((value, i) => i === index ? { ...value, type: event.target.value as LessonExercisePayload["type"], options: event.target.value === "multiple_choice" ? (value.options?.length ? value.options : ["", ""]) : [] } : value) }))} style={{ padding: "7px", borderRadius: 6, background: "oklch(0.13 0.025 250)", color: "oklch(0.80 0.01 250)" }}><option value="multiple_choice">Multiple choice</option><option value="fill_blank">Fill blank</option></select><button type="button" onClick={() => setLessonForm(current => ({ ...current, exercises: current.exercises.filter((_, i) => i !== index) }))} style={{ marginLeft: "auto", border: "none", background: "none", color: "#f87171", cursor: "pointer" }}>Delete</button></div>
+                      {["question", "questionVi", "correctAnswer"].map(field => <input key={field} placeholder={field === "correctAnswer" ? "Correct answer" : field === "questionVi" ? "Question (Vietnamese)" : "Question (Korean)"} value={(exercise as any)[field] ?? ""} onChange={event => setLessonForm(current => ({ ...current, exercises: current.exercises.map((value, i) => i === index ? { ...value, [field]: event.target.value } : value) }))} style={{ width: "100%", boxSizing: "border-box", padding: "8px", marginBottom: 7, borderRadius: 6, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.80 0.01 250)" }} />)}
+                      {exercise.type === "multiple_choice" && <input placeholder="Options, separated by commas" value={(exercise.options ?? []).join(", ")} onChange={event => setLessonForm(current => ({ ...current, exercises: current.exercises.map((value, i) => i === index ? { ...value, options: event.target.value.split(",").map(option => option.trim()) } : value) }))} style={{ width: "100%", boxSizing: "border-box", padding: "8px", borderRadius: 6, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.80 0.01 250)" }} />}
+                    </div>
+                  ))}
+                </div>
+                {lessonFormError && <p role="alert" style={{ margin: "14px 0 0", color: "#f87171", fontSize: 12 }}>{lessonFormError}</p>}
+                <div style={{ display: "flex", gap: 10, marginTop: 16 }}><button type="submit" disabled={lessonSaving} style={{ padding: "9px 20px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontWeight: 700, cursor: lessonSaving ? "wait" : "pointer", opacity: lessonSaving ? .65 : 1 }}>{lessonSaving ? "Saving..." : "Save Lesson"}</button><button type="button" onClick={() => { setShowAddLesson(false); setEditingLessonId(null); }} disabled={lessonSaving} style={{ padding: "9px 20px", borderRadius: 10, border: "1px solid oklch(0.25 0.03 250)", background: "none", color: "oklch(0.55 0.03 250)", cursor: "pointer" }}>Cancel</button></div>
+              </form>
             )}
-            {!editingLessonId && (
-              <p style={{ marginTop: 14, fontSize: 12, color: "oklch(0.40 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>Click Edit on a lesson to open the rich editor.</p>
-            )}
+
+            {lessonsError && <div role="alert" style={{ marginBottom: 12, color: "#f87171", fontSize: 12 }}>Could not load lessons: {lessonsError} <button onClick={() => void fetchLessons()} style={{ marginLeft: 8, color: TEAL, background: "none", border: "none", cursor: "pointer" }}>Retry</button></div>}
+            <AdminTable headers={["Order", "Title", "Topic", "Domain", "Vocabulary", "Exercises", ""]}>
+              {lessonsLoading && <TR><td colSpan={7} style={{ padding: "24px 16px", textAlign: "center", color: "oklch(0.50 0.03 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>Loading lessons...</td></TR>}
+              {!lessonsLoading && !lessonsError && lessons.length === 0 && <TR><td colSpan={7} style={{ padding: "24px 16px", textAlign: "center", color: "oklch(0.50 0.03 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>No lessons found. Create one to get started.</td></TR>}
+              {!lessonsLoading && lessons.map(lesson => <TR key={lesson.id}><AdminTd mono>{lesson.order}</AdminTd><td style={{ padding: "12px 16px" }}><p style={{ margin: "0 0 2px", color: "oklch(0.88 0.01 250)" }}>{lesson.title}</p><p style={{ margin: 0, fontSize: 11, color: "oklch(0.45 0.03 250)" }}>{lesson.titleVi}</p></td><td style={{ padding: "12px 16px" }}><p style={{ margin: "0 0 2px", fontSize: 12, color: "oklch(0.76 0.01 250)" }}>{lesson.topicTitle ?? topics.find(topic => topic.id === lesson.topicId)?.title ?? "Unknown topic"}</p><p style={{ margin: 0, fontSize: 10, color: "oklch(0.45 0.03 250)" }}>{lesson.topicTitleVi}</p></td><td style={{ padding: "12px 16px" }}><KBadge color={domainColor(lesson.domain ?? "")}>{lesson.domain ?? "—"}</KBadge></td><AdminTd mono>{lesson.vocabulary?.length ?? 0}</AdminTd><AdminTd mono>{lesson.exercises?.length ?? 0}</AdminTd><td style={{ padding: "12px 16px", display: "flex", gap: 6 }}><button onClick={() => openEditLesson(lesson)} style={{ padding: "5px 10px", borderRadius: 7, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, cursor: "pointer" }}>Edit</button><button onClick={() => void deleteLesson(lesson)} style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid #f8717144", background: "#f8717110", color: "#f87171", cursor: "pointer" }}>Delete</button></td></TR>)}
+            </AdminTable>
           </div>
         )}
 
@@ -2994,15 +3360,99 @@ function AdminPanel({ lang }: { lang: Lang }) {
   );
 }
 
+// ─── Admin Login ────────────────────────────────────────────────────────────────
+function AdminLoginScreen({ onLogin }: { onLogin: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch((import.meta.env.VITE_API_URL || 'http://192.168.0.85:8080') + "/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        // Check if user has ADMIN role
+        const userRoles = data.data.user?.roles || [];
+        if (!userRoles.includes("ROLE_ADMIN")) {
+          setError("Access denied. Admin privileges required.");
+          return;
+        }
+        localStorage.setItem("kapor_admin_token", data.data.accessToken);
+        if (data.data.refreshToken) {
+          localStorage.setItem("kapor_admin_refresh_token", data.data.refreshToken);
+        }
+        onLogin();
+      } else {
+        setError(data.message || "Invalid credentials");
+      }
+    } catch (err) {
+      setError("Failed to connect to server");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0a0a0f", color: "white" }}>
+      <div style={{ background: "oklch(0.14 0.025 250)", border: "1px solid oklch(0.22 0.03 250)", padding: 40, borderRadius: 16, width: 360 }}>
+        <div style={{ textAlign: "center", marginBottom: 30 }}>
+          <div style={{ width: 60, height: 60, borderRadius: 16, background: `${TEAL}18`, border: `2px solid ${TEAL}44`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 28 }}>⚙️</div>
+          <h1 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 24, color: TEAL, margin: "0 0 4px" }}>KAPOR ADMIN</h1>
+          <p style={{ fontSize: 12, color: "oklch(0.50 0.03 250)", margin: 0 }}>System Management Dashboard</p>
+        </div>
+        <form onSubmit={handleLogin} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <input 
+            type="email" 
+            placeholder="Admin Email" 
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            style={{ padding: "12px 16px", borderRadius: 8, border: "1px solid oklch(0.22 0.03 250)", background: "oklch(0.12 0.02 250)", color: "white", outline: "none", fontFamily: "JetBrains Mono, monospace", fontSize: 13 }}
+            required
+          />
+          <input 
+            type="password" 
+            placeholder="Password" 
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            style={{ padding: "12px 16px", borderRadius: 8, border: "1px solid oklch(0.22 0.03 250)", background: "oklch(0.12 0.02 250)", color: "white", outline: "none", fontFamily: "JetBrains Mono, monospace", fontSize: 13 }}
+            required
+          />
+          {error && <p style={{ color: "#f87171", fontSize: 12, margin: 0 }}>{error}</p>}
+          <button 
+            type="submit" 
+            disabled={loading}
+            style={{ padding: "14px", borderRadius: 8, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 15, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.7 : 1, marginTop: 8 }}
+          >
+            {loading ? "Authenticating..." : "Login"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Root ────────────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [lang] = useState<Lang>("vi");
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!localStorage.getItem("kapor_admin_token"));
 
   return (
     <div style={{ position: "relative" }}>
       <style>{`@keyframes kpulse { 0%,100%{opacity:0.35} 50%{opacity:1} }`}</style>
-      <AdminPanel lang={lang} />
+      {isAuthenticated ? (
+        <AdminPanel lang={lang} />
+      ) : (
+        <AdminLoginScreen onLogin={() => setIsAuthenticated(true)} />
+      )}
     </div>
   );
 }

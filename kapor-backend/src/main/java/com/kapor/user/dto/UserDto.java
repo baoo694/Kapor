@@ -19,7 +19,6 @@ public class UserDto {
     private String displayName;
     private String avatarUrl;
     private String nativeLanguage;
-    private String koreanLevel;
     private List<String> learningGoals;
     private boolean hasCompletedOnboarding;
     private User.Streak streak;
@@ -35,7 +34,6 @@ public class UserDto {
                 .displayName(user.getProfile() != null ? user.getProfile().getDisplayName() : null)
                 .avatarUrl(user.getProfile() != null ? user.getProfile().getAvatarUrl() : null)
                 .nativeLanguage(user.getProfile() != null ? user.getProfile().getNativeLanguage() : null)
-                .koreanLevel(user.getProfile() != null ? user.getProfile().getKoreanLevel() : null)
                 .learningGoals(user.getProfile() != null ? user.getProfile().getLearningGoals() : null)
                 .hasCompletedOnboarding(user.getProfile() != null && user.getProfile().getLearningGoals() != null && !user.getProfile().getLearningGoals().isEmpty())
                 .streak(user.getStreak())

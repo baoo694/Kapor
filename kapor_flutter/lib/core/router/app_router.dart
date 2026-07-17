@@ -4,6 +4,10 @@ import 'package:go_router/go_router.dart';
 import '../../features/dashboard/dashboard_screen.dart';
 import '../../features/devvocab/devvocab_screen.dart';
 import '../../features/devvocab/devvocab_lesson_screen.dart';
+import '../../features/devvocab/devvocab_lesson_detail_screen.dart';
+import '../../features/devvocab/data/devvocab_service.dart';
+import '../../features/devvocab/flashcard_study_screen.dart';
+import '../../features/devvocab/flashcard_summary_screen.dart';
 import '../../features/membyte/membyte_screen.dart';
 import '../../features/membyte/membyte_review_screen.dart';
 import '../../features/techtalk/techtalk_select_screen.dart';
@@ -22,7 +26,8 @@ import '../../features/auth/forgot_password_screen.dart';
 import '../../features/onboarding/onboarding_screen.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>();
-final GlobalKey<NavigatorState> _shellNavigatorKey = GlobalKey<NavigatorState>();
+final GlobalKey<NavigatorState> _shellNavigatorKey =
+    GlobalKey<NavigatorState>();
 
 final GoRouter appRouter = GoRouter(
   navigatorKey: _rootNavigatorKey,
@@ -30,25 +35,100 @@ final GoRouter appRouter = GoRouter(
   routes: [
     GoRoute(
       path: '/login',
-      pageBuilder: (context, state) => const NoTransitionPage(child: LoginScreen()),
+      pageBuilder: (context, state) =>
+          const NoTransitionPage(child: LoginScreen()),
     ),
     GoRoute(
       path: '/register',
-      pageBuilder: (context, state) => const NoTransitionPage(child: RegisterScreen()),
+      pageBuilder: (context, state) =>
+          const NoTransitionPage(child: RegisterScreen()),
     ),
     GoRoute(
       path: '/forgot-password',
-      pageBuilder: (context, state) => const NoTransitionPage(child: ForgotPasswordScreen()),
+      pageBuilder: (context, state) =>
+          const NoTransitionPage(child: ForgotPasswordScreen()),
     ),
     GoRoute(
       path: '/onboarding',
-      pageBuilder: (context, state) => const NoTransitionPage(child: OnboardingScreen()),
+      pageBuilder: (context, state) =>
+          const NoTransitionPage(child: OnboardingScreen()),
+    ),
+    GoRoute(
+      path: '/devvocab-topic/:id',
+      pageBuilder: (context, state) {
+        final id = state.pathParameters['id'];
+        final topic = state.extra is DevVocabTopic
+            ? state.extra as DevVocabTopic
+            : null;
+        return NoTransitionPage(
+          child: DevVocabLessonScreen(topicId: id ?? '', topic: topic),
+        );
+      },
     ),
     GoRoute(
       path: '/devvocab-lesson/:id',
       pageBuilder: (context, state) {
-        final id = state.pathParameters['id'];
-        return NoTransitionPage(child: DevVocabLessonScreen(lessonId: id));
+        final lesson = state.extra is DevVocabLesson
+            ? state.extra as DevVocabLesson
+            : null;
+        return CustomTransitionPage<void>(
+          key: state.pageKey,
+          transitionDuration: const Duration(milliseconds: 260),
+          reverseTransitionDuration: const Duration(milliseconds: 220),
+          child: DevVocabLessonDetailScreen(
+            lessonId: state.pathParameters['id'] ?? '',
+            initialLesson: lesson,
+          ),
+          transitionsBuilder: (context, animation, secondaryAnimation, child) {
+            final curvedAnimation = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+              reverseCurve: Curves.easeInCubic,
+            );
+            return FadeTransition(
+              opacity: curvedAnimation,
+              child: SlideTransition(
+                position: Tween<Offset>(
+                  begin: const Offset(0.035, 0),
+                  end: Offset.zero,
+                ).animate(curvedAnimation),
+                child: ScaleTransition(
+                  scale: Tween<double>(
+                    begin: 0.985,
+                    end: 1,
+                  ).animate(curvedAnimation),
+                  child: child,
+                ),
+              ),
+            );
+          },
+        );
+      },
+    ),
+    GoRoute(
+      path: '/devvocab-lesson/:id/flashcards',
+      pageBuilder: (context, state) {
+        final lesson = state.extra is DevVocabLesson
+            ? state.extra as DevVocabLesson
+            : null;
+        return NoTransitionPage(
+          child: FlashcardStudyScreen(
+            lessonId: state.pathParameters['id'] ?? '',
+            initialLesson: lesson,
+          ),
+        );
+      },
+    ),
+    GoRoute(
+      path: '/devvocab-lesson/:id/flashcards/summary',
+      pageBuilder: (context, state) {
+        final args = state.extra;
+        if (args is! FlashcardSummaryArgs) {
+          return const NoTransitionPage(
+            child: Scaffold(body: SizedBox.shrink()),
+          );
+        }
+        return NoTransitionPage(child: FlashcardSummaryScreen(args: args));
       },
     ),
     GoRoute(
@@ -60,7 +140,8 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/techtalk-select',
-      pageBuilder: (context, state) => const NoTransitionPage(child: TechTalkSelectScreen()),
+      pageBuilder: (context, state) =>
+          const NoTransitionPage(child: TechTalkSelectScreen()),
     ),
     GoRoute(
       path: '/techtalk-chat',
@@ -71,27 +152,33 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/techtalk-result',
-      pageBuilder: (context, state) => const NoTransitionPage(child: TechTalkResultScreen()),
+      pageBuilder: (context, state) =>
+          const NoTransitionPage(child: TechTalkResultScreen()),
     ),
     GoRoute(
       path: '/honorifics',
-      pageBuilder: (context, state) => const NoTransitionPage(child: HonorificsScreen()),
+      pageBuilder: (context, state) =>
+          const NoTransitionPage(child: HonorificsScreen()),
     ),
     GoRoute(
       path: '/video',
-      pageBuilder: (context, state) => const NoTransitionPage(child: VideoScreen()),
+      pageBuilder: (context, state) =>
+          const NoTransitionPage(child: VideoScreen()),
     ),
     GoRoute(
       path: '/pronunciation-list',
-      pageBuilder: (context, state) => const NoTransitionPage(child: PronunciationListScreen()),
+      pageBuilder: (context, state) =>
+          const NoTransitionPage(child: PronunciationListScreen()),
     ),
     GoRoute(
       path: '/pronunciation',
-      pageBuilder: (context, state) => const NoTransitionPage(child: PronunciationScreen()),
+      pageBuilder: (context, state) =>
+          const NoTransitionPage(child: PronunciationScreen()),
     ),
     GoRoute(
       path: '/admin',
-      pageBuilder: (context, state) => const NoTransitionPage(child: AdminPanelScreen()),
+      pageBuilder: (context, state) =>
+          const NoTransitionPage(child: AdminPanelScreen()),
     ),
     ShellRoute(
       navigatorKey: _shellNavigatorKey,
@@ -101,19 +188,23 @@ final GoRouter appRouter = GoRouter(
       routes: [
         GoRoute(
           path: '/dashboard',
-          pageBuilder: (context, state) => const NoTransitionPage(child: DashboardScreen()),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: DashboardScreen()),
         ),
         GoRoute(
           path: '/devvocab',
-          pageBuilder: (context, state) => const NoTransitionPage(child: DevVocabScreen()),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: DevVocabScreen()),
         ),
         GoRoute(
           path: '/membyte',
-          pageBuilder: (context, state) => const NoTransitionPage(child: MemByteScreen()),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: MemByteScreen()),
         ),
         GoRoute(
           path: '/profile',
-          pageBuilder: (context, state) => const NoTransitionPage(child: ProfileScreen()),
+          pageBuilder: (context, state) =>
+              const NoTransitionPage(child: ProfileScreen()),
         ),
       ],
     ),
