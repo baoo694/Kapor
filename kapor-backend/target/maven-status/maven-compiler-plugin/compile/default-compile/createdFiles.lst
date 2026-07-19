@@ -56,6 +56,7 @@ com/kapor/devvocab/dto/SkillNodeDto$SkillNodeDtoBuilder.class
 com/kapor/analytics/model/DailyActivity$DailyMetrics$DailyMetricsBuilder.class
 com/kapor/auth/service/GoogleAuthService.class
 com/kapor/admin/dto/AdminDashboardStatsDto$AdminDashboardStatsDtoBuilder.class
+com/kapor/membyte/service/FsrsService$1.class
 com/kapor/common/exception/GlobalExceptionHandler.class
 com/kapor/analytics/repository/DailyActivityRepository.class
 com/kapor/admin/dto/AdminDashboardStatsDto$AiUsagePoint.class

@@ -1,16 +1,14 @@
 # kapor_flutter
 
-A new Flutter project.
+## Backend API configuration
 
-## Getting Started
+The API base URL is read from `API_BASE_URL` in the root `.env` file. To point
+the app at a different backend, change that one value and restart the app:
 
-This project is a starting point for a Flutter application.
+```env
+API_BASE_URL=http://192.168.0.85:8080/api
+```
 
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Use `.env.example` as a reference for emulator values. The `.env` file is
+bundled with the app, so it must not contain secrets such as API keys or
+passwords.

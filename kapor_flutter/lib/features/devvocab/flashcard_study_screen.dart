@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import 'data/devvocab_service.dart';
 import 'flashcard_summary_screen.dart';
 import 'widgets/vocabulary_flip_card.dart';
+import '../membyte/data/membyte_service.dart';
 
 class FlashcardStudyScreen extends StatefulWidget {
   final String lessonId;
@@ -23,12 +24,15 @@ class FlashcardStudyScreen extends StatefulWidget {
 
 class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   final DevVocabService _devVocabService = DevVocabService();
+  final MemByteService _memByteService = MemByteService();
   DevVocabLesson? _lesson;
   FlashcardProgress? _progress;
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _isSavingToMemByte = false;
   String? _errorMessage;
   int _currentIndex = 0;
+  Set<String> _savedVocabularyIds = {};
 
   @override
   void initState() {
@@ -46,6 +50,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       final results = await Future.wait([
         _devVocabService.getLesson(widget.lessonId),
         _devVocabService.getFlashcardProgress(widget.lessonId),
+        _memByteService.getSavedVocabularyIds(widget.lessonId),
       ]);
       if (!mounted) {
         return;
@@ -53,6 +58,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       setState(() {
         _lesson = results[0] as DevVocabLesson;
         _progress = results[1] as FlashcardProgress;
+        _savedVocabularyIds = results[2] as Set<String>;
         _currentIndex = 0;
         _isLoading = false;
       });
@@ -120,6 +126,39 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       return;
     }
     setState(() => _currentIndex += 1);
+  }
+
+  Future<void> _saveCurrentVocabulary() async {
+    final lesson = _lesson;
+    if (_isSavingToMemByte ||
+        lesson == null ||
+        _currentIndex >= lesson.vocabulary.length) {
+      return;
+    }
+    final vocabulary = lesson.vocabulary[_currentIndex];
+    if (vocabulary.id.isEmpty) {
+      _showError('Thẻ này chưa có ID. Vui lòng lưu lại Lesson trong Admin.');
+      return;
+    }
+
+    setState(() => _isSavingToMemByte = true);
+    try {
+      await _memByteService.saveVocabulary(
+        lessonId: lesson.id,
+        vocabularyId: vocabulary.id,
+      );
+      if (!mounted) return;
+      setState(
+        () => _savedVocabularyIds = {..._savedVocabularyIds, vocabulary.id},
+      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Đã thêm thẻ vào MemByte')));
+    } catch (error) {
+      _showError(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isSavingToMemByte = false);
+    }
   }
 
   void _showError(String message) {
@@ -216,6 +255,11 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
                   child: VocabularyFlipCard(
                     vocabulary: vocabulary,
                     showActions: true,
+                    isSavedToMemByte: _savedVocabularyIds.contains(
+                      vocabulary.id,
+                    ),
+                    isSavingToMemByte: _isSavingToMemByte,
+                    onSaveToMemByte: _saveCurrentVocabulary,
                   ),
                 ),
               ),

@@ -15,6 +15,7 @@
 /Users/quachgiabao/Kapor/kapor-backend/src/test/java/com/kapor/devvocab/controller/DevVocabControllerTest.java
 /Users/quachgiabao/Kapor/kapor-backend/src/test/java/com/kapor/devvocab/controller/FlashcardProgressControllerTest.java
 /Users/quachgiabao/Kapor/kapor-backend/src/test/java/com/kapor/devvocab/service/SkillTreeServiceTest.java
+/Users/quachgiabao/Kapor/kapor-backend/src/test/java/com/kapor/membyte/controller/MembyteControllerTest.java
 /Users/quachgiabao/Kapor/kapor-backend/src/test/java/com/kapor/user/controller/UserControllerTest.java
 /Users/quachgiabao/Kapor/kapor-backend/src/test/java/com/kapor/user/dto/UserDtoTest.java
 /Users/quachgiabao/Kapor/kapor-backend/src/test/java/com/kapor/user/service/UserServiceTest.java

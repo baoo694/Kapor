@@ -1,28 +1,30 @@
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../config/app_environment.dart';
+
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
   late Dio dio;
 
-  // Change this depending on the environment (e.g. 10.0.2.2 for Android emulator, 
-  // localhost for iOS simulator, or your local machine IP like 192.168.x.x for physical devices)
-  static const String baseUrl = 'http://192.168.0.85:8080/api';
+  static String get baseUrl => AppEnvironment.apiBaseUrl;
 
   factory ApiClient() {
     return _instance;
   }
 
   ApiClient._internal() {
-    dio = Dio(BaseOptions(
-      baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: 15),
-      receiveTimeout: const Duration(seconds: 15),
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-    ));
+    dio = Dio(
+      BaseOptions(
+        baseUrl: baseUrl,
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 15),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ),
+    );
 
     dio.interceptors.add(
       InterceptorsWrapper(
@@ -41,13 +43,15 @@ class ApiClient {
         },
       ),
     );
-    
+
     // Add logging interceptor in debug mode
-    dio.interceptors.add(LogInterceptor(
-      request: true,
-      requestBody: true,
-      responseBody: true,
-      responseHeader: false,
-    ));
+    dio.interceptors.add(
+      LogInterceptor(
+        request: true,
+        requestBody: true,
+        responseBody: true,
+        responseHeader: false,
+      ),
+    );
   }
 }

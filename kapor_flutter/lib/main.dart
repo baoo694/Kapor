@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'core/config/app_environment.dart';
 import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 import 'features/auth/providers/auth_provider.dart';
@@ -7,6 +8,7 @@ import 'core/providers/settings_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AppEnvironment.load();
   runApp(
     MultiProvider(
       providers: [

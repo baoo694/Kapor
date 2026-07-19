@@ -9,11 +9,17 @@ import '../data/devvocab_service.dart';
 class VocabularyFlipCard extends StatefulWidget {
   final LessonVocabularyItem vocabulary;
   final bool showActions;
+  final bool isSavedToMemByte;
+  final bool isSavingToMemByte;
+  final VoidCallback? onSaveToMemByte;
 
   const VocabularyFlipCard({
     super.key,
     required this.vocabulary,
     this.showActions = false,
+    this.isSavedToMemByte = false,
+    this.isSavingToMemByte = false,
+    this.onSaveToMemByte,
   });
 
   @override
@@ -145,12 +151,30 @@ class _VocabularyFlipCardState extends State<VocabularyFlipCard>
             ),
           ),
           if (widget.showActions)
-            const Align(
+            Align(
               alignment: Alignment.topRight,
-              child: Icon(
-                Icons.star_border_rounded,
-                color: Colors.white,
-                size: 32,
+              child: IconButton(
+                tooltip: widget.isSavedToMemByte
+                    ? 'Đã lưu vào MemByte'
+                    : 'Lưu vào MemByte',
+                onPressed: widget.isSavedToMemByte || widget.isSavingToMemByte
+                    ? null
+                    : widget.onSaveToMemByte,
+                icon: widget.isSavingToMemByte
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : Icon(
+                        widget.isSavedToMemByte
+                            ? Icons.star_rounded
+                            : Icons.star_border_rounded,
+                        color: widget.isSavedToMemByte
+                            ? const Color(0xFFFFC107)
+                            : Colors.white,
+                        size: 32,
+                      ),
               ),
             ),
         ],
