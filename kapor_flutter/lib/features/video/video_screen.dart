@@ -38,6 +38,10 @@ class _VideoScreenState extends State<VideoScreen> {
   }
 
   void _select(LearningVideo video) {
+    if (video.youtubeVideoId.trim().isEmpty) {
+      setState(() => _error = 'Video này chưa có YouTube ID hợp lệ.');
+      return;
+    }
     _positionSubscription?.cancel();
     _player?.close();
     final player = YoutubePlayerController.fromVideoId(
@@ -46,7 +50,9 @@ class _VideoScreenState extends State<VideoScreen> {
         showControls: true,
         showFullscreenButton: true,
         playsInline: true,
+        privacyEnhancedMode: false,
       ),
+      autoPlay: true,
     );
     _positionSubscription = player.videoStateStream.listen((state) {
       if (mounted)

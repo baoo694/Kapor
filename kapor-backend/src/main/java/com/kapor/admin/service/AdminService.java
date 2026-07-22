@@ -11,9 +11,17 @@ import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.time.YearMonth;
+import java.time.ZoneOffset;
+import java.time.format.TextStyle;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -27,80 +35,32 @@ public class AdminService {
     public AdminDashboardStatsDto getDashboardStats() {
         long totalUsers = userRepository.count();
         long totalContent = lessonRepository.count();
-        
-        // DAU: count of unique users who had activity today
-        // Our daily_activity collection records one document per user per date.
-        // So counting by today's date gives the DAU.
         long dau = dailyActivityRepository.countByDate(LocalDate.now());
-
-        // Generate Chart Data
-        List<AdminDashboardStatsDto.UserGrowthPoint> userGrowthData = List.of(
-                new AdminDashboardStatsDto.UserGrowthPoint("Jan", 120),
-                new AdminDashboardStatsDto.UserGrowthPoint("Feb", 180),
-                new AdminDashboardStatsDto.UserGrowthPoint("Mar", 240),
-                new AdminDashboardStatsDto.UserGrowthPoint("Apr", 350),
-                new AdminDashboardStatsDto.UserGrowthPoint("May", 520),
-                new AdminDashboardStatsDto.UserGrowthPoint("Jun", 780),
-                new AdminDashboardStatsDto.UserGrowthPoint("Jul", (int) totalUsers > 780 ? (int) totalUsers : 890)
-        );
-
-        List<AdminDashboardStatsDto.DauPoint> dauData = List.of(
-                new AdminDashboardStatsDto.DauPoint("Mon", 89),
-                new AdminDashboardStatsDto.DauPoint("Tue", 112),
-                new AdminDashboardStatsDto.DauPoint("Wed", 145),
-                new AdminDashboardStatsDto.DauPoint("Thu", 132),
-                new AdminDashboardStatsDto.DauPoint("Fri", 156),
-                new AdminDashboardStatsDto.DauPoint("Sat", 98),
-                new AdminDashboardStatsDto.DauPoint("Sun", (int) dau > 0 ? (int) dau : 76)
-        );
-
-        List<AdminDashboardStatsDto.DomainCompletionPoint> lessonCompletionData = List.of(
-                new AdminDashboardStatsDto.DomainCompletionPoint("Frontend", 450),
-                new AdminDashboardStatsDto.DomainCompletionPoint("Backend", 380),
-                new AdminDashboardStatsDto.DomainCompletionPoint("DevOps", 290),
-                new AdminDashboardStatsDto.DomainCompletionPoint("Agile", 210)
-        );
-
-        List<AdminDashboardStatsDto.AiUsagePoint> aiUsageData = List.of(
-                new AdminDashboardStatsDto.AiUsagePoint("Oct", 48),
-                new AdminDashboardStatsDto.AiUsagePoint("Nov", 72),
-                new AdminDashboardStatsDto.AiUsagePoint("Dec", 95),
-                new AdminDashboardStatsDto.AiUsagePoint("Jan", 120),
-                new AdminDashboardStatsDto.AiUsagePoint("Feb", 145),
-                new AdminDashboardStatsDto.AiUsagePoint("Mar", 168)
-        );
-
-        List<AdminDashboardStatsDto.NewRegPoint> newRegData = List.of(
-                new AdminDashboardStatsDto.NewRegPoint("Mon", 18),
-                new AdminDashboardStatsDto.NewRegPoint("Tue", 24),
-                new AdminDashboardStatsDto.NewRegPoint("Wed", 31),
-                new AdminDashboardStatsDto.NewRegPoint("Thu", 28),
-                new AdminDashboardStatsDto.NewRegPoint("Fri", 35),
-                new AdminDashboardStatsDto.NewRegPoint("Sat", 14),
-                new AdminDashboardStatsDto.NewRegPoint("Sun", 10)
-        );
-
-        List<AdminDashboardStatsDto.RetentionPoint> retentionData = List.of(
-                new AdminDashboardStatsDto.RetentionPoint("W1", 100, 62, 38),
-                new AdminDashboardStatsDto.RetentionPoint("W2", 100, 58, 35),
-                new AdminDashboardStatsDto.RetentionPoint("W3", 100, 65, 42),
-                new AdminDashboardStatsDto.RetentionPoint("W4", 100, 70, 45)
-        );
-
-        List<AdminDashboardStatsDto.AiDailyPoint> aiDailyData = List.of(
-                new AdminDashboardStatsDto.AiDailyPoint("Mon", 680, 1240, 320),
-                new AdminDashboardStatsDto.AiDailyPoint("Tue", 820, 1480, 410),
-                new AdminDashboardStatsDto.AiDailyPoint("Wed", 1050, 1720, 580),
-                new AdminDashboardStatsDto.AiDailyPoint("Thu", 940, 1380, 490),
-                new AdminDashboardStatsDto.AiDailyPoint("Fri", 1120, 1850, 620),
-                new AdminDashboardStatsDto.AiDailyPoint("Sat", 560, 980, 280),
-                new AdminDashboardStatsDto.AiDailyPoint("Sun", 430, 780, 220)
-        );
+        LocalDate today = LocalDate.now();
+        List<com.kapor.user.model.User> allUsers = userRepository.findAll();
+        List<com.kapor.analytics.model.DailyActivity> activities = dailyActivityRepository.findAll();
+        List<AdminDashboardStatsDto.UserGrowthPoint> userGrowthData = userGrowth(allUsers);
+        List<AdminDashboardStatsDto.DauPoint> dauData = lastSevenDays(today, activities, false);
+        List<AdminDashboardStatsDto.NewRegPoint> newRegData = registrationsLastSevenDays(today, allUsers);
+        List<AdminDashboardStatsDto.DomainCompletionPoint> lessonCompletionData = activityCompletionsByDomain(activities);
+        List<AdminDashboardStatsDto.RetentionPoint> retentionData = retention(allUsers, activities, today);
+        List<AdminDashboardStatsDto.AiUsagePoint> aiUsageData = List.of();
+        List<AdminDashboardStatsDto.AiDailyPoint> aiDailyData = lastSevenDays(today, activities, true).stream()
+                .map(point -> new AdminDashboardStatsDto.AiDailyPoint(point.getDay(), 0, 0, 0)).toList();
+        long mau = activities.stream().filter(a -> !a.getDate().isBefore(today.minusDays(29))).map(com.kapor.analytics.model.DailyActivity::getUserId).distinct().count();
+        long totalMinutes = activities.stream().filter(a -> !a.getDate().isBefore(today.minusDays(6))).mapToLong(com.kapor.analytics.model.DailyActivity::getMinutesStudied).sum();
+        long activityRows = activities.stream().filter(a -> !a.getDate().isBefore(today.minusDays(6))).count();
 
         return AdminDashboardStatsDto.builder()
                 .users(totalUsers)
                 .contentCount(totalContent)
                 .dau(dau)
+                .mau(mau)
+                .averageSessionMinutes(activityRows == 0 ? 0 : Math.round((float) totalMinutes / activityRows))
+                .churnRate(totalUsers == 0 ? 0 : Math.max(0, 100d - (mau * 100d / totalUsers)))
+                .totalAiCalls(0)
+                .totalAiCost(0)
+                .aiErrorCount(0)
                 .userGrowthData(userGrowthData)
                 .dauData(dauData)
                 .lessonCompletionData(lessonCompletionData)
@@ -109,6 +69,49 @@ public class AdminService {
                 .retentionData(retentionData)
                 .aiDailyData(aiDailyData)
                 .build();
+    }
+
+    private List<AdminDashboardStatsDto.UserGrowthPoint> userGrowth(List<com.kapor.user.model.User> users) {
+        Map<YearMonth, Long> byMonth = users.stream().map(user -> user.getCreatedAt() == null ? null : YearMonth.from(user.getCreatedAt().atZone(ZoneOffset.UTC)))
+                .filter(java.util.Objects::nonNull).collect(Collectors.groupingBy(value -> value, Collectors.counting()));
+        long running = 0;
+        List<AdminDashboardStatsDto.UserGrowthPoint> points = new ArrayList<>();
+        for (YearMonth month : byMonth.keySet().stream().sorted().toList()) {
+            running += byMonth.get(month);
+            points.add(new AdminDashboardStatsDto.UserGrowthPoint(month.getMonth().getDisplayName(TextStyle.SHORT, Locale.ENGLISH), (int) running));
+        }
+        return points;
+    }
+
+    private List<AdminDashboardStatsDto.DauPoint> lastSevenDays(LocalDate today, List<com.kapor.analytics.model.DailyActivity> activities, boolean ignored) {
+        List<AdminDashboardStatsDto.DauPoint> points = new ArrayList<>();
+        for (int offset = 6; offset >= 0; offset--) {
+            LocalDate date = today.minusDays(offset);
+            int count = (int) activities.stream().filter(activity -> date.equals(activity.getDate())).map(com.kapor.analytics.model.DailyActivity::getUserId).distinct().count();
+            points.add(new AdminDashboardStatsDto.DauPoint(date.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.ENGLISH), count));
+        }
+        return points;
+    }
+
+    private List<AdminDashboardStatsDto.NewRegPoint> registrationsLastSevenDays(LocalDate today, List<com.kapor.user.model.User> users) {
+        return java.util.stream.IntStream.rangeClosed(0, 6).mapToObj(offset -> {
+            LocalDate date = today.minusDays(6 - offset);
+            int count = (int) users.stream().filter(user -> user.getCreatedAt() != null && date.equals(user.getCreatedAt().atZone(ZoneOffset.UTC).toLocalDate())).count();
+            return new AdminDashboardStatsDto.NewRegPoint(date.getDayOfWeek().getDisplayName(TextStyle.SHORT, Locale.ENGLISH), count);
+        }).toList();
+    }
+
+    private List<AdminDashboardStatsDto.DomainCompletionPoint> activityCompletionsByDomain(List<com.kapor.analytics.model.DailyActivity> activities) {
+        // DailyActivity has no domain dimension yet; report the measured global total under "all" rather than inventing splits.
+        return List.of(new AdminDashboardStatsDto.DomainCompletionPoint("all", activities.stream().mapToInt(com.kapor.analytics.model.DailyActivity::getLessonsCompleted).sum()));
+    }
+
+    private List<AdminDashboardStatsDto.RetentionPoint> retention(List<com.kapor.user.model.User> users, List<com.kapor.analytics.model.DailyActivity> activities, LocalDate today) {
+        return java.util.stream.IntStream.rangeClosed(0, 3).mapToObj(index -> {
+            LocalDate cohortStart = today.minusWeeks(index + 1L);
+            long cohort = users.stream().filter(user -> user.getCreatedAt() != null && !user.getCreatedAt().atZone(ZoneOffset.UTC).toLocalDate().isBefore(cohortStart.minusDays(6)) && !user.getCreatedAt().atZone(ZoneOffset.UTC).toLocalDate().isAfter(cohortStart)).count();
+            return new AdminDashboardStatsDto.RetentionPoint("W" + (index + 1), cohort == 0 ? 0 : 100, 0, 0);
+        }).toList();
     }
 
     public org.springframework.data.domain.Page<com.kapor.user.dto.UserDto> getUsers(int page, String search) {
@@ -174,5 +177,25 @@ public class AdminService {
 
     public void deleteUser(String id) {
         userRepository.deleteById(id);
+    }
+
+    public List<com.kapor.user.dto.UserDto> getAdminUsers() {
+        return userRepository.findAll().stream()
+                .filter(user -> user.getRoles() != null && user.getRoles().contains("ROLE_ADMIN"))
+                .map(com.kapor.user.dto.UserDto::fromEntity).toList();
+    }
+
+    /** Promotes an existing account. This intentionally does not create an account or send email from the API. */
+    public com.kapor.user.dto.UserDto grantAdmin(String email) {
+        com.kapor.user.model.User user = userRepository.findByEmail(email.trim().toLowerCase(Locale.ROOT))
+                .orElseThrow(() -> new IllegalArgumentException("No user found for email: " + email));
+        user.setRoles(Set.of("ROLE_ADMIN"));
+        return com.kapor.user.dto.UserDto.fromEntity(userRepository.save(user));
+    }
+
+    public void revokeAdmin(String id) {
+        com.kapor.user.model.User user = userRepository.findById(id).orElseThrow(() -> new RuntimeException("User not found"));
+        user.setRoles(Set.of("ROLE_USER"));
+        userRepository.save(user);
     }
 }

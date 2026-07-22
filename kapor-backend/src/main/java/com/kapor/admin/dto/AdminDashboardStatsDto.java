@@ -15,6 +15,12 @@ public class AdminDashboardStatsDto {
     private long users;
     private long contentCount;
     private long dau;
+    private long mau;
+    private long averageSessionMinutes;
+    private double churnRate;
+    private long totalAiCalls;
+    private double totalAiCost;
+    private long aiErrorCount;
 
     private List<UserGrowthPoint> userGrowthData;
     private List<DauPoint> dauData;

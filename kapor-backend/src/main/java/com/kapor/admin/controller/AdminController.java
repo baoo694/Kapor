@@ -48,4 +48,20 @@ public class AdminController {
         adminService.deleteUser(id);
         return ResponseEntity.ok(ApiResponse.ok(null, "User deleted successfully"));
     }
+
+    @GetMapping("/admins")
+    public ResponseEntity<ApiResponse<java.util.List<com.kapor.user.dto.UserDto>>> getAdminUsers() {
+        return ResponseEntity.ok(ApiResponse.ok(adminService.getAdminUsers()));
+    }
+
+    @org.springframework.web.bind.annotation.PostMapping("/admins")
+    public ResponseEntity<ApiResponse<com.kapor.user.dto.UserDto>> grantAdmin(@org.springframework.web.bind.annotation.RequestBody java.util.Map<String, String> request) {
+        return ResponseEntity.ok(ApiResponse.ok(adminService.grantAdmin(request.getOrDefault("email", ""))));
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping("/admins/{id}")
+    public ResponseEntity<ApiResponse<Void>> revokeAdmin(@org.springframework.web.bind.annotation.PathVariable String id) {
+        adminService.revokeAdmin(id);
+        return ResponseEntity.ok(ApiResponse.ok(null));
+    }
 }
