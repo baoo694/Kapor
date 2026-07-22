@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://192.168.0.85:8080';
+const API_BASE = import.meta.env.VITE_API_URL || 'http://192.168.0.73:8080';
 
 export type AdminTopicPayload = {
   id?: string;

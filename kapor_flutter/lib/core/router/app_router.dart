@@ -13,10 +13,12 @@ import '../../features/membyte/membyte_review_screen.dart';
 import '../../features/techtalk/techtalk_select_screen.dart';
 import '../../features/techtalk/techtalk_screen.dart';
 import '../../features/techtalk/techtalk_result_screen.dart';
+import '../../features/techtalk/data/techtalk_service.dart';
 import '../../features/honorifics/honorifics_screen.dart';
 import '../../features/video/video_screen.dart';
 import '../../features/pronunciation/pronunciation_list_screen.dart';
 import '../../features/pronunciation/pronunciation_screen.dart';
+import '../../features/pronunciation/data/pronunciation_service.dart';
 import '../../features/admin/admin_panel_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/main/main_screen.dart';
@@ -146,14 +148,18 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/techtalk-chat',
       pageBuilder: (context, state) {
-        final scenario = state.extra as Map<String, dynamic>?;
+        final scenario = state.extra as TechTalkScenario?;
+        if (scenario == null) {
+          return const NoTransitionPage(child: TechTalkSelectScreen());
+        }
         return NoTransitionPage(child: TechTalkScreen(scenario: scenario));
       },
     ),
     GoRoute(
       path: '/techtalk-result',
-      pageBuilder: (context, state) =>
-          const NoTransitionPage(child: TechTalkResultScreen()),
+      pageBuilder: (context, state) => NoTransitionPage(
+        child: TechTalkResultScreen(session: state.extra as RoleplaySession?),
+      ),
     ),
     GoRoute(
       path: '/honorifics',
@@ -172,8 +178,13 @@ final GoRouter appRouter = GoRouter(
     ),
     GoRoute(
       path: '/pronunciation',
-      pageBuilder: (context, state) =>
-          const NoTransitionPage(child: PronunciationScreen()),
+      pageBuilder: (context, state) {
+        final exercise = state.extra as PronunciationExercise?;
+        if (exercise == null) {
+          return const NoTransitionPage(child: PronunciationListScreen());
+        }
+        return NoTransitionPage(child: PronunciationScreen(exercise: exercise));
+      },
     ),
     GoRoute(
       path: '/admin',

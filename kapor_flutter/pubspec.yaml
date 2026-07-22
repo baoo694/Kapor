@@ -43,6 +43,9 @@ dependencies:
   dio: ^5.10.0
   flutter_dotenv: ^5.2.1
   shared_preferences: ^2.5.5
+  youtube_player_iframe: ^6.0.2
+  record: ^6.2.1
+  just_audio: ^0.10.6
 
 dev_dependencies:
   flutter_test:

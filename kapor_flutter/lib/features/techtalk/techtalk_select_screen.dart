@@ -3,187 +3,154 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/theme/app_theme.dart';
+import 'data/techtalk_service.dart';
 
-class TechTalkSelectScreen extends StatelessWidget {
+class TechTalkSelectScreen extends StatefulWidget {
   const TechTalkSelectScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    final List<Map<String, dynamic>> scenarios = [
-      {
-        "id": "s1",
-        "avatar": "👨🏻‍💻",
-        "name": "서버 장애 보고",
-        "nameVi": "Báo cáo sự cố server",
-        "difficulty": "Trung cấp",
-        "domain": "Backend",
-        "missionVi": "Báo cáo sự cố DB timeout và đề xuất phương án rollback.",
-        "persona": "Kim Tech Lead",
-        "role": "Team Leader",
-        "company": "Naver",
-        "color": const Color(0xFFF87171),
-      },
-      {
-        "id": "s2",
-        "avatar": "👩🏻‍💼",
-        "name": "요구사항 리뷰",
-        "nameVi": "Review yêu cầu tính năng",
-        "difficulty": "Sơ cấp",
-        "domain": "Frontend",
-        "missionVi": "Làm rõ yêu cầu về UI animation với PO.",
-        "persona": "Lee PO",
-        "role": "Product Owner",
-        "company": "Toss",
-        "color": const Color(0xFF34D399),
-      }
-    ];
+  State<TechTalkSelectScreen> createState() => _TechTalkSelectScreenState();
+}
 
+class _TechTalkSelectScreenState extends State<TechTalkSelectScreen> {
+  final _service = TechTalkService();
+  late Future<List<TechTalkScenario>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = _service.scenarios();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          onPressed: context.pop,
         ),
         title: const Text('Chọn tình huống'),
       ),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text(
-              'CHỌN TÌNH HUỐNG LUYỆN TẬP',
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 10,
-                color: AppTheme.textSecondary,
-                letterSpacing: 1,
+      body: FutureBuilder<List<TechTalkScenario>>(
+        future: _future,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState != ConnectionState.done) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (snapshot.hasError) {
+            return Center(
+              child: TextButton(
+                onPressed: () => setState(() => _future = _service.scenarios()),
+                child: Text(
+                  snapshot.error.toString().replaceFirst('Exception: ', ''),
+                ),
               ),
-            ),
-            const SizedBox(height: 14),
-            ...scenarios.map((sc) {
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: InkWell(
-                  onTap: () {
-                    context.push('/techtalk-chat', extra: sc);
-                  },
-                  borderRadius: BorderRadius.circular(14),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surface.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: sc["color"].withOpacity(0.3),
-                      ),
-                    ),
+            );
+          }
+          final scenarios = snapshot.data ?? const <TechTalkScenario>[];
+          if (scenarios.isEmpty) {
+            return Center(
+              child: Text(
+                'Chưa có scenario. Hãy thêm nội dung từ Admin Panel.',
+                style: GoogleFonts.inter(color: AppTheme.textSecondary),
+              ),
+            );
+          }
+          return ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text(
+                'CHỌN TÌNH HUỐNG LUYỆN TẬP',
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 10,
+                  color: AppTheme.textSecondary,
+                  letterSpacing: 1,
+                ),
+              ),
+              const SizedBox(height: 12),
+              ...scenarios.map(_card),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _card(TechTalkScenario scenario) {
+    return Card(
+      child: InkWell(
+        onTap: () => context.push('/techtalk-chat', extra: scenario),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    scenario.persona.avatar,
+                    style: const TextStyle(fontSize: 26),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Container(
-                              width: 44,
-                              height: 44,
-                              decoration: BoxDecoration(
-                                color: sc["color"].withOpacity(0.18),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              alignment: Alignment.center,
-                              child: Text(
-                                sc["avatar"],
-                                style: const TextStyle(fontSize: 22),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    sc["name"],
-                                    style: GoogleFonts.outfit(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 16,
-                                      color: AppTheme.textPrimary,
-                                    ),
-                                  ),
-                                  Text(
-                                    sc["nameVi"],
-                                    style: GoogleFonts.inter(
-                                      fontSize: 12,
-                                      color: AppTheme.textSecondary,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                _buildBadge(sc["difficulty"], sc["color"]),
-                                const SizedBox(height: 4),
-                                _buildBadge(sc["domain"], AppTheme.textSecondary),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: AppTheme.surface.withOpacity(0.8),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            '🎯 ${sc["missionVi"]}',
-                            style: GoogleFonts.inter(
-                              fontSize: 12,
-                              color: AppTheme.textSecondary,
-                            ),
+                        Text(
+                          scenario.title,
+                          style: GoogleFonts.outfit(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Text(sc["avatar"], style: const TextStyle(fontSize: 14)),
-                            const SizedBox(width: 8),
-                            Text(
-                              '${sc["persona"]} · ${sc["role"]} @ ${sc["company"]}',
-                              style: GoogleFonts.inter(
-                                fontSize: 11,
-                                color: AppTheme.textSecondary,
-                              ),
-                            ),
-                          ],
+                        Text(
+                          scenario.titleVi,
+                          style: GoogleFonts.inter(
+                            fontSize: 12,
+                            color: AppTheme.textSecondary,
+                          ),
                         ),
                       ],
                     ),
                   ),
+                  _badge(scenario.difficulty),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '🎯 ${scenario.missionVi}',
+                style: GoogleFonts.inter(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary,
                 ),
-              );
-            }),
-          ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                '${scenario.persona.name} · ${scenario.persona.role} @ ${scenario.persona.company}',
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 10,
+                  color: AppTheme.primary,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildBadge(String text, Color color) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        text,
-        style: GoogleFonts.jetBrainsMono(
-          fontSize: 9,
-          color: color,
-        ),
-      ),
-    );
-  }
+  Widget _badge(String value) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+    decoration: BoxDecoration(
+      color: AppTheme.secondary.withOpacity(.15),
+      borderRadius: BorderRadius.circular(6),
+    ),
+    child: Text(
+      value,
+      style: GoogleFonts.jetBrainsMono(fontSize: 9, color: AppTheme.secondary),
+    ),
+  );
 }

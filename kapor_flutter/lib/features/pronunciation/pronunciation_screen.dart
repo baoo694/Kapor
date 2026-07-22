@@ -1,44 +1,108 @@
+import 'dart:async';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:record/record.dart';
 
 import '../../core/theme/app_theme.dart';
+import 'data/pronunciation_service.dart';
 
 class PronunciationScreen extends StatefulWidget {
-  const PronunciationScreen({super.key});
-
+  const PronunciationScreen({super.key, required this.exercise});
+  final PronunciationExercise exercise;
   @override
   State<PronunciationScreen> createState() => _PronunciationScreenState();
 }
 
 class _PronunciationScreenState extends State<PronunciationScreen> {
+  final _recorder = AudioRecorder();
+  final _service = PronunciationService();
+  final _bytes = BytesBuilder(copy: false);
+  StreamSubscription<Uint8List>? _subscription;
   bool _recording = false;
-  String _phase = "listen"; // listen, record, result
+  bool _evaluating = false;
+  PronunciationResult? _result;
+  String? _error;
 
-  void _handleRecord() {
+  @override
+  void dispose() {
+    _subscription?.cancel();
+    _recorder.dispose();
+    super.dispose();
+  }
+
+  Future<void> _record() async {
     if (_recording) {
-      setState(() {
-        _recording = false;
-      });
-      Future.delayed(const Duration(milliseconds: 600), () {
-        if (mounted) setState(() => _phase = "result");
-      });
-    } else {
+      await _subscription?.cancel();
+      await _recorder.stop();
+      if (mounted) setState(() => _recording = false);
+      return;
+    }
+    try {
+      if (!await _recorder.hasPermission()) {
+        setState(() => _error = 'Cần quyền micro để ghi âm.');
+        return;
+      }
+      _bytes.clear();
+      final stream = await _recorder.startStream(
+        const RecordConfig(encoder: AudioEncoder.pcm16bits, sampleRate: 16000),
+      );
+      _subscription = stream.listen(_bytes.add);
       setState(() {
         _recording = true;
-        _phase = "record";
+        _result = null;
+        _error = null;
       });
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Không thể bắt đầu ghi âm.');
+    }
+  }
+
+  Future<void> _evaluate() async {
+    if (_recording) await _record();
+    final data = _bytes.takeBytes();
+    if (data.isEmpty) {
+      setState(() => _error = 'Hãy ghi âm trước khi đánh giá.');
+      return;
+    }
+    setState(() {
+      _evaluating = true;
+      _error = null;
+    });
+    try {
+      final result = await _service.evaluate(
+        exerciseId: widget.exercise.id,
+        bytes: data,
+      );
+      if (mounted) setState(() => _result = result);
+    } catch (error) {
+      if (mounted)
+        setState(
+          () => _error = error.toString().replaceFirst('Exception: ', ''),
+        );
+    } finally {
+      if (mounted) setState(() => _evaluating = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final sentence = widget.exercise.sentences.isEmpty
+        ? const PronunciationSentence(
+            text: '',
+            translationVi: '',
+            audioUrl: '',
+            waveform: [],
+          )
+        : widget.exercise.sentences.first;
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          onPressed: context.pop,
         ),
         title: const Text('Pronunciation Lab'),
       ),
@@ -46,9 +110,7 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            // Sample Sentence
             Card(
-              margin: const EdgeInsets.only(bottom: 12),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
@@ -59,260 +121,139 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
                       style: GoogleFonts.jetBrainsMono(
                         fontSize: 10,
                         color: AppTheme.textSecondary,
-                        letterSpacing: 1,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '서버 배포가 완료되었습니다',
+                      sentence.text,
                       style: GoogleFonts.outfit(
+                        fontSize: 21,
                         fontWeight: FontWeight.w700,
-                        fontSize: 20,
-                        color: AppTheme.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Việc triển khai server đã hoàn tất',
+                      sentence.translationVi,
                       style: GoogleFonts.inter(
-                        fontSize: 11,
+                        fontSize: 12,
                         color: AppTheme.textSecondary,
                       ),
                     ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Container(
-                          width: 34,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            color: AppTheme.primary.withOpacity(0.18),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(Icons.play_arrow, size: 16, color: AppTheme.primary),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Row(
-                            children: List.generate(10, (i) {
-                              return Expanded(
-                                child: Container(
-                                  height: (i % 3 + 1) * 6.0,
-                                  margin: const EdgeInsets.symmetric(horizontal: 1),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.primary.withOpacity(0.65),
-                                    borderRadius: BorderRadius.circular(2),
-                                  ),
-                                ),
-                              );
-                            }),
-                          ),
-                        ),
-                      ],
-                    ),
+                    const SizedBox(height: 15),
+                    _wave(sentence.waveform, AppTheme.primary),
                   ],
                 ),
               ),
             ),
-
-            // Recording Area
+            const SizedBox(height: 12),
             Card(
-              margin: const EdgeInsets.only(bottom: 12),
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'BẢN GHI ÂM CỦA BẠN',
+                      'BẢN GHI CỦA BẠN',
                       style: GoogleFonts.jetBrainsMono(
                         fontSize: 10,
                         color: AppTheme.textSecondary,
-                        letterSpacing: 1,
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Container(
-                      height: 48,
-                      alignment: Alignment.bottomCenter,
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: List.generate(20, (i) {
-                          return Expanded(
-                            child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 100),
-                              height: _recording ? (i % 4 + 1) * 8.0 + 5.0 : (_phase != "listen" ? (i % 2 + 1) * 6.0 : 4.0),
-                              margin: const EdgeInsets.symmetric(horizontal: 1),
-                              decoration: BoxDecoration(
-                                color: _recording
-                                    ? Colors.red[300]
-                                    : (_phase != "listen" ? AppTheme.secondary : AppTheme.textSecondary.withOpacity(0.3)),
-                                borderRadius: BorderRadius.circular(2),
-                              ),
-                            ),
-                          );
-                        }),
-                      ),
+                    const SizedBox(height: 12),
+                    _wave(
+                      _result?.userWaveform ?? const [],
+                      _recording ? Colors.redAccent : AppTheme.secondary,
                     ),
                     const SizedBox(height: 14),
-                    ElevatedButton(
-                      onPressed: _handleRecord,
+                    ElevatedButton.icon(
+                      onPressed: _evaluating ? null : _record,
+                      icon: Icon(_recording ? Icons.stop : Icons.mic),
+                      label: Text(
+                        _recording ? 'Dừng ghi âm' : 'Bắt đầu ghi âm',
+                      ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: _recording ? Colors.red[300]!.withOpacity(0.12) : AppTheme.primary.withOpacity(0.12),
-                        foregroundColor: _recording ? Colors.red[300] : AppTheme.primary,
-                        side: BorderSide(
-                          color: (_recording ? Colors.red[300]! : AppTheme.primary).withOpacity(0.4),
-                        ),
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
+                        backgroundColor: _recording
+                            ? Colors.redAccent
+                            : AppTheme.primary,
+                        foregroundColor: Colors.black,
                       ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.mic, size: 16),
-                          const SizedBox(width: 8),
-                          Text(
-                            _recording ? 'Dừng ghi âm' : (_phase == "result" ? 'Ghi âm lại' : 'Bắt đầu ghi âm'),
-                            style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 13),
-                          ),
-                        ],
-                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    OutlinedButton(
+                      onPressed: _evaluating ? null : _evaluate,
+                      child: _evaluating
+                          ? const CircularProgressIndicator()
+                          : const Text('Đánh giá phát âm'),
                     ),
                   ],
                 ),
               ),
             ),
-
-            // Result Phase
-            if (_phase == "result") ...[
+            if (_error != null)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.only(top: 12),
                 child: Text(
-                  'ĐÁNH GIÁ TỪNG TỪ',
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 10,
-                    color: AppTheme.textSecondary,
-                    letterSpacing: 1,
-                  ),
+                  _error!,
+                  style: const TextStyle(color: Colors.redAccent),
                 ),
               ),
-              Wrap(
-                spacing: 10,
-                children: [
-                  _buildWordEval('서버', const Color(0xFF34D399)),
-                  _buildWordEval('배포가', const Color(0xFF34D399)),
-                  _buildWordEval('완료', AppTheme.secondary),
-                  _buildWordEval('되었습니다', Colors.red[300]!),
-                ],
-              ),
-              const SizedBox(height: 12),
+            if (_result != null)
               Card(
-                margin: const EdgeInsets.only(bottom: 16),
+                margin: const EdgeInsets.only(top: 12),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'ĐIỂM SỐ',
+                        _result!.status == 'pending_provider'
+                            ? 'ĐÃ GỬI BẢN GHI'
+                            : 'KẾT QUẢ',
                         style: GoogleFonts.jetBrainsMono(
                           fontSize: 10,
                           color: AppTheme.textSecondary,
-                          letterSpacing: 1,
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        children: [
-                          _buildScoreCircle(82, 'ACCURACY', AppTheme.primary),
-                          _buildScoreCircle(75, 'FLUENCY', const Color(0xFFA78BFA)),
-                          _buildScoreCircle(68, 'PROSODY', AppTheme.secondary),
-                        ],
+                      const SizedBox(height: 8),
+                      Text(
+                        _result!.message,
+                        style: GoogleFonts.inter(
+                          color: AppTheme.textPrimary,
+                          height: 1.5,
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
-              ElevatedButton(
-                onPressed: () {},
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  foregroundColor: Colors.black,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: Text(
-                  'Bài tiếp theo →',
-                  style: GoogleFonts.outfit(fontWeight: FontWeight.w700, fontSize: 14),
-                ),
-              ),
-            ],
           ],
         ),
       ),
     );
   }
 
-  Widget _buildWordEval(String text, Color color) {
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: color.withOpacity(0.5), width: 2)),
-      ),
-      child: Text(
-        text,
-        style: GoogleFonts.outfit(
-          fontWeight: FontWeight.w700,
-          fontSize: 18,
-          color: color,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildScoreCircle(int score, String label, Color color) {
-    return Column(
-      children: [
-        SizedBox(
-          width: 60,
-          height: 60,
-          child: Stack(
-            children: [
-              Center(
-                child: CircularProgressIndicator(
-                  value: score / 100.0,
-                  strokeWidth: 6,
-                  backgroundColor: AppTheme.textSecondary.withOpacity(0.2),
-                  color: color,
-                ),
-              ),
-              Center(
-                child: Text(
-                  score.toString(),
-                  style: GoogleFonts.jetBrainsMono(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 16,
-                    color: AppTheme.textPrimary,
+  Widget _wave(List<double> values, Color color) {
+    final bars = values.isEmpty ? List<double>.filled(32, .12) : values;
+    return SizedBox(
+      height: 52,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: bars
+            .take(64)
+            .map(
+              (value) => Expanded(
+                child: Container(
+                  height: 5 + value.clamp(0, 1) * 44,
+                  margin: const EdgeInsets.symmetric(horizontal: 1),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(.75),
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
               ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: GoogleFonts.jetBrainsMono(
-            fontSize: 9,
-            color: color,
-          ),
-        ),
-      ],
+            )
+            .toList(),
+      ),
     );
   }
 }

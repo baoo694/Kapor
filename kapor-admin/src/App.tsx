@@ -3372,7 +3372,7 @@ function AdminLoginScreen({ onLogin }: { onLogin: () => void }) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch((import.meta.env.VITE_API_URL || 'http://192.168.0.85:8080') + "/api/auth/login", {
+      const res = await fetch((import.meta.env.VITE_API_URL || 'http://192.168.0.73:8080') + "/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
