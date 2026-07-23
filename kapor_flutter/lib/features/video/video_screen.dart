@@ -20,6 +20,7 @@ class _VideoScreenState extends State<VideoScreen> {
   LearningVideo? _video;
   YoutubePlayerController? _player;
   StreamSubscription<YoutubeVideoState>? _positionSubscription;
+  StreamSubscription<YoutubePlayerValue>? _playerValueSubscription;
   double _position = 0;
   final Set<String> _completedQuizzes = {};
   String? _error;
@@ -33,6 +34,7 @@ class _VideoScreenState extends State<VideoScreen> {
   @override
   void dispose() {
     _positionSubscription?.cancel();
+    _playerValueSubscription?.cancel();
     _player?.close();
     super.dispose();
   }
@@ -43,7 +45,9 @@ class _VideoScreenState extends State<VideoScreen> {
       return;
     }
     _positionSubscription?.cancel();
+    _playerValueSubscription?.cancel();
     _player?.close();
+    debugPrint('YT select: id=${video.youtubeVideoId}, title=${video.title}');
     final player = YoutubePlayerController.fromVideoId(
       videoId: video.youtubeVideoId,
       params: const YoutubePlayerParams(
@@ -51,12 +55,24 @@ class _VideoScreenState extends State<VideoScreen> {
         showFullscreenButton: true,
         playsInline: true,
         privacyEnhancedMode: false,
+        // Android WebView has no Referer by default. Identify this installed
+        // application so YouTube can authorize the embedded player.
+        origin: 'https://com.example.kapor_flutter',
       ),
       autoPlay: true,
     );
     _positionSubscription = player.videoStateStream.listen((state) {
       if (mounted)
         setState(() => _position = state.position.inMilliseconds / 1000);
+    });
+    _playerValueSubscription = player.stream.listen((value) {
+      debugPrint(
+        'YT player: state=${value.playerState}, error=${value.error}, '
+        'videoId=${value.metaData.videoId}, quality=${value.playbackQuality}',
+      );
+      if (mounted && value.hasError) {
+        setState(() => _error = 'YouTube player error: ${value.error}');
+      }
     });
     setState(() {
       _video = video;
@@ -179,7 +195,19 @@ class _VideoScreenState extends State<VideoScreen> {
                     .where((token) => token.clickable)
                     .map(
                       (token) => ActionChip(
-                        label: Text(token.surface),
+                        backgroundColor: AppTheme.primary.withValues(
+                          alpha: .12,
+                        ),
+                        side: BorderSide(
+                          color: AppTheme.primary.withValues(alpha: .4),
+                        ),
+                        label: Text(
+                          token.surface,
+                          style: GoogleFonts.outfit(
+                            color: AppTheme.primary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
                         onPressed: () => _showWord(token),
                       ),
                     )
@@ -251,33 +279,9 @@ class _VideoScreenState extends State<VideoScreen> {
     _player?.pauseVideo();
     showModalBottomSheet(
       context: context,
-      backgroundColor: AppTheme.surface,
-      builder: (context) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              token.surface,
-              style: GoogleFonts.outfit(
-                fontSize: 25,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Từ gốc: ${token.stem}',
-              style: GoogleFonts.inter(color: AppTheme.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Từ điển IT sẽ hiển thị nghĩa và nút thêm MemByte khi nội dung từ điển được admin cung cấp.',
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => _WordDetailSheet(token: token),
     );
   }
 
@@ -352,5 +356,140 @@ class _VideoScreenState extends State<VideoScreen> {
         ],
       ),
     ),
+  );
+}
+
+class _WordDetailSheet extends StatelessWidget {
+  const _WordDetailSheet({required this.token});
+
+  final VideoToken token;
+
+  String _value(String value, String fallback) =>
+      value.trim().isEmpty ? fallback : value.trim();
+
+  @override
+  Widget build(BuildContext context) {
+    final pronunciation = _value(token.pronunciation, 'Chưa có phiên âm');
+    final vi = _value(token.meaningVi, 'Chưa có nghĩa tiếng Việt');
+    final en = _value(token.meaningEn, 'English meaning unavailable');
+    final definition = _value(
+      token.definitionEn,
+      'English definition unavailable',
+    );
+    final example = _value(token.exampleKo, 'Chưa có câu ví dụ.');
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        width: double.infinity,
+        constraints: const BoxConstraints(maxHeight: 560),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+        decoration: const BoxDecoration(
+          color: Color(0xFF06111E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        ),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(99),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          token.surface,
+                          style: GoogleFonts.outfit(
+                            color: AppTheme.primary,
+                            fontSize: 32,
+                            height: 1,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 7),
+                        Text(
+                          '$pronunciation  ·  Từ gốc: ${token.stem}',
+                          style: GoogleFonts.inter(
+                            color: AppTheme.textSecondary,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Đóng',
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                    style: IconButton.styleFrom(
+                      backgroundColor: const Color(0xFF102236),
+                      foregroundColor: AppTheme.textSecondary,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 22),
+              _detailRow('NGHĨA', '$vi ($en)', AppTheme.textPrimary),
+              const SizedBox(height: 16),
+              _detailRow(
+                'ENGLISH DEFINITION',
+                definition,
+                const Color(0xFFB7C8DA),
+              ),
+              const SizedBox(height: 16),
+              _detailRow(
+                'VÍ DỤ TIẾNG HÀN',
+                example,
+                AppTheme.textPrimary,
+                italic: true,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _detailRow(
+    String label,
+    String value,
+    Color color, {
+    bool italic = false,
+  }) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        label,
+        style: GoogleFonts.jetBrainsMono(
+          color: AppTheme.primary,
+          fontSize: 10,
+          fontWeight: FontWeight.w700,
+          letterSpacing: .8,
+        ),
+      ),
+      const SizedBox(height: 6),
+      Text(
+        value,
+        style: GoogleFonts.inter(
+          color: color,
+          fontSize: 16,
+          height: 1.4,
+          fontStyle: italic ? FontStyle.italic : FontStyle.normal,
+        ),
+      ),
+    ],
   );
 }

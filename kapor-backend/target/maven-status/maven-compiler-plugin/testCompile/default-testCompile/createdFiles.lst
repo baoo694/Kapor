@@ -1,5 +1,8 @@
 com/kapor/common/dto/ApiResponseTest$SuccessResponses.class
+com/kapor/video/service/VideoServiceSubtitleTest$1.class
 com/kapor/common/exception/GlobalExceptionHandlerTest.class
 com/kapor/common/dto/ApiResponseTest$ErrorResponses.class
+com/kapor/video/service/GeminiSubtitleServiceTest.class
 com/kapor/common/dto/ApiResponseTest.class
 com/kapor/BaseIntegrationTest.class
+com/kapor/video/service/VideoServiceSubtitleTest.class

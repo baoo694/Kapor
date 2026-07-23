@@ -52,9 +52,9 @@ google:
 
 # Gemini AI
 gemini:
-  api-key: ${GEMINI_API_KEY:your-gemini-api-key}
-  model-name: gemini-2.5-pro
-
+  api-key: ${GEMINI_API_KEY:}
+  model-name: ${GEMINI_MODEL:gemini-2.5-flash}
+  subtitle-batch-size: 12
 # MinIO (Object Storage)
 minio:
   endpoint: ${MINIO_ENDPOINT:http://localhost:9000}

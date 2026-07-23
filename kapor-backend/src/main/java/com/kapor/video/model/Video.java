@@ -62,6 +62,12 @@ public class Video {
         private String surface;
         private String stem;
         private String pos;
+        private String pronunciation;
+        private String meaningVi;
+        private String meaningEn;
+        private String definitionEn;
+        private String exampleKo;
+        private String grammarNote;
         private boolean clickable;
     }
 

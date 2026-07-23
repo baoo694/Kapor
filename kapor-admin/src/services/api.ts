@@ -47,11 +47,27 @@ export type AdminLessonPayload = {
   domain?: string;
 };
 
+export type SubtitleLinePayload = {
+  start: number;
+  end: number;
+  text: string;
+  tokens?: unknown[];
+};
+
+export type SubtitleUpdatePayload = {
+  koreanSubtitles: SubtitleLinePayload[];
+  vietnameseSubtitles: SubtitleLinePayload[];
+};
+
+export type SubtitleTokenizePayload = {
+  koreanSubtitles: SubtitleLinePayload[];
+};
+
 export type AdminVideoPayload = {
   id?: string; title: string; titleVi?: string; youtubeUrl?: string; youtubeVideoId?: string;
   thumbnailUrl?: string; domain: string; difficulty: string; durationSeconds?: number;
-  koreanSubtitles?: { start: number; end: number; text: string; tokens?: unknown[] }[];
-  vietnameseSubtitles?: { start: number; end: number; text: string; tokens?: unknown[] }[];
+  koreanSubtitles?: SubtitleLinePayload[];
+  vietnameseSubtitles?: SubtitleLinePayload[];
   quizMarkers?: unknown[];
 };
 
@@ -237,6 +253,33 @@ export const api = {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify(video)
+    });
+    return handleResponse(res);
+  },
+
+  updateVideoSubtitles: async (id: string, subtitles: SubtitleUpdatePayload): Promise<AdminVideoPayload> => {
+    const res = await fetch(`${API_BASE}/api/admin/videos/${id}/subtitles`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(subtitles)
+    });
+    return handleResponse(res);
+  },
+
+  tokenizeVideoSubtitles: async (id: string, subtitles: SubtitleTokenizePayload): Promise<AdminVideoPayload> => {
+    const res = await fetch(`${API_BASE}/api/admin/videos/${id}/subtitles/tokenize`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(subtitles)
+    });
+    return handleResponse(res);
+  },
+
+  analyzeVideoSubtitlesWithAi: async (id: string, subtitles: SubtitleTokenizePayload): Promise<AdminVideoPayload> => {
+    const res = await fetch(`${API_BASE}/api/admin/videos/${id}/subtitles/ai-analyze`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(subtitles)
     });
     return handleResponse(res);
   },

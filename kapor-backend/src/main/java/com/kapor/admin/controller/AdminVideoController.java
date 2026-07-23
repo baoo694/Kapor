@@ -2,6 +2,10 @@ package com.kapor.admin.controller;
 
 import com.kapor.common.dto.ApiResponse;
 import com.kapor.video.dto.VideoDto;
+import com.kapor.video.dto.SubtitleUpdateRequest;
+import com.kapor.video.dto.SubtitleTokenizeRequest;
+import com.kapor.video.dto.SubtitleAiAnalyzeRequest;
+import jakarta.validation.Valid;
 import com.kapor.video.service.VideoService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -29,6 +33,24 @@ public class AdminVideoController {
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<VideoDto>> updateVideo(@PathVariable String id, @RequestBody VideoDto dto) {
         return ResponseEntity.ok(ApiResponse.ok(videoService.updateVideo(id, dto)));
+    }
+
+    @PutMapping("/{id}/subtitles")
+    public ResponseEntity<ApiResponse<VideoDto>> updateSubtitles(
+            @PathVariable String id, @Valid @RequestBody SubtitleUpdateRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(videoService.updateSubtitles(id, request)));
+    }
+
+    @PostMapping("/{id}/subtitles/tokenize")
+    public ResponseEntity<ApiResponse<VideoDto>> tokenizeSubtitles(
+            @PathVariable String id, @Valid @RequestBody SubtitleTokenizeRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(videoService.tokenizeKoreanSubtitles(id, request)));
+    }
+
+    @PostMapping("/{id}/subtitles/ai-analyze")
+    public ResponseEntity<ApiResponse<VideoDto>> analyzeSubtitlesWithAi(
+            @PathVariable String id, @Valid @RequestBody SubtitleAiAnalyzeRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(videoService.analyzeSubtitlesWithAi(id, request)));
     }
 
     @DeleteMapping("/{id}")

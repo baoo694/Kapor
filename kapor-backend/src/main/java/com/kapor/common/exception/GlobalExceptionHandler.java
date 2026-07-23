@@ -1,6 +1,7 @@
 package com.kapor.common.exception;
 
 import com.kapor.common.dto.ApiResponse;
+import com.kapor.video.exception.GeminiApiException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -54,6 +55,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error("BAD_REQUEST", ex.getMessage()));
+    }
+
+    @ExceptionHandler(GeminiApiException.class)
+    public ResponseEntity<ApiResponse<Void>> handleGemini(GeminiApiException ex) {
+        return ResponseEntity.status(ex.getStatus())
+                .body(ApiResponse.error("GEMINI_ERROR", ex.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)

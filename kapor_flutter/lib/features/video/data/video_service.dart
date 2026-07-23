@@ -6,14 +6,29 @@ class VideoToken {
   const VideoToken({
     required this.surface,
     required this.stem,
+    required this.pronunciation,
+    required this.meaningVi,
+    required this.meaningEn,
+    required this.definitionEn,
+    required this.exampleKo,
     required this.clickable,
   });
   final String surface;
   final String stem;
+  final String pronunciation;
+  final String meaningVi;
+  final String meaningEn;
+  final String definitionEn;
+  final String exampleKo;
   final bool clickable;
   factory VideoToken.fromJson(Map<String, dynamic> json) => VideoToken(
     surface: json['surface']?.toString() ?? '',
     stem: json['stem']?.toString() ?? '',
+    pronunciation: json['pronunciation']?.toString() ?? '',
+    meaningVi: json['meaningVi']?.toString() ?? '',
+    meaningEn: json['meaningEn']?.toString() ?? '',
+    definitionEn: json['definitionEn']?.toString() ?? '',
+    exampleKo: json['exampleKo']?.toString() ?? '',
     clickable: json['clickable'] == true,
   );
 }

@@ -1,10 +1,14 @@
 package com.kapor.video.service;
 
 import com.kapor.video.dto.VideoDto;
+import com.kapor.video.dto.SubtitleUpdateRequest;
+import com.kapor.video.dto.SubtitleTokenizeRequest;
+import com.kapor.video.dto.SubtitleAiAnalyzeRequest;
 import com.kapor.video.model.Video;
 import com.kapor.video.repository.VideoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Value;
 
 import java.util.List;
 import java.util.Locale;
@@ -15,6 +19,11 @@ import java.util.stream.Collectors;
 public class VideoService {
 
     private final VideoRepository videoRepository;
+    private final SubtitleTokenizer subtitleTokenizer;
+    private final GeminiSubtitleService geminiSubtitleService;
+
+    @Value("${gemini.subtitle-batch-size:12}")
+    private int geminiSubtitleBatchSize;
 
     public List<VideoDto> getAllVideos() {
         return videoRepository.findAll().stream()
@@ -58,14 +67,72 @@ public class VideoService {
         return VideoDto.fromEntity(video);
     }
 
+    public VideoDto updateSubtitles(String id, SubtitleUpdateRequest request) {
+        Video video = findVideo(id);
+        validateSubtitles(request.getKoreanSubtitles(), request.getVietnameseSubtitles());
+        video.setKoreanSubtitles(request.getKoreanSubtitles());
+        video.setVietnameseSubtitles(request.getVietnameseSubtitles());
+        return VideoDto.fromEntity(videoRepository.save(video));
+    }
+
+    public VideoDto tokenizeSubtitles(String id, SubtitleUpdateRequest request) {
+        Video video = findVideo(id);
+        validateSubtitles(request.getKoreanSubtitles(), request.getVietnameseSubtitles());
+        request.getKoreanSubtitles().forEach(line -> line.setTokens(subtitleTokenizer.tokenize(line.getText())));
+        request.getVietnameseSubtitles().forEach(line -> line.setTokens(List.of()));
+        video.setKoreanSubtitles(request.getKoreanSubtitles());
+        video.setVietnameseSubtitles(request.getVietnameseSubtitles());
+        return VideoDto.fromEntity(videoRepository.save(video));
+    }
+
+    public VideoDto tokenizeKoreanSubtitles(String id, SubtitleTokenizeRequest request) {
+        Video video = findVideo(id);
+        validateKoreanSubtitles(request.getKoreanSubtitles());
+        request.getKoreanSubtitles().forEach(line -> line.setTokens(subtitleTokenizer.tokenize(line.getText())));
+        video.setKoreanSubtitles(request.getKoreanSubtitles());
+        return VideoDto.fromEntity(videoRepository.save(video));
+    }
+
+    public VideoDto analyzeSubtitlesWithAi(String id, SubtitleAiAnalyzeRequest request) {
+        Video video = findVideo(id);
+        List<Video.SubtitleLine> korean = request.getKoreanSubtitles();
+        validateKoreanSubtitles(korean);
+        List<Video.SubtitleLine> vietnamese = new java.util.ArrayList<>();
+        int batchSize = Math.max(1, geminiSubtitleBatchSize);
+
+        for (int start = 0; start < korean.size(); start += batchSize) {
+            int end = Math.min(start + batchSize, korean.size());
+            List<Video.SubtitleLine> batch = korean.subList(start, end);
+            List<GeminiSubtitleService.AnalysisLine> analysis = geminiSubtitleService.analyze(batch);
+            for (GeminiSubtitleService.AnalysisLine result : analysis) {
+                Video.SubtitleLine koreanLine = batch.get(result.index());
+                List<Video.TokenizedWord> verifiedTokens = result.tokens().stream()
+                        .filter(token -> koreanLine.getText().contains(token.getSurface()))
+                        .collect(Collectors.toList());
+                koreanLine.setTokens(verifiedTokens);
+                vietnamese.add(Video.SubtitleLine.builder()
+                        .start(koreanLine.getStart())
+                        .end(koreanLine.getEnd())
+                        .text(result.vietnamese())
+                        .tokens(List.of())
+                        .build());
+            }
+        }
+
+        if (vietnamese.size() != korean.size()) {
+            throw new IllegalStateException("Gemini did not return every subtitle line");
+        }
+        video.setKoreanSubtitles(korean);
+        video.setVietnameseSubtitles(vietnamese);
+        return VideoDto.fromEntity(videoRepository.save(video));
+    }
+
     public void deleteVideo(String id) {
         videoRepository.deleteById(id);
     }
 
     public VideoDto getVideo(String id) {
-        Video video = videoRepository.findById(id)
-                .orElseThrow(() -> new com.kapor.common.exception.ResourceNotFoundException("Video", "id", id));
-        return VideoDto.fromEntity(video);
+        return VideoDto.fromEntity(findVideo(id));
     }
 
     public List<VideoDto> getVideos(String domain) {
@@ -76,8 +143,7 @@ public class VideoService {
     }
 
     public boolean answerQuiz(String videoId, String quizId, int answer) {
-        Video video = videoRepository.findById(videoId)
-                .orElseThrow(() -> new com.kapor.common.exception.ResourceNotFoundException("Video", "id", videoId));
+        Video video = findVideo(videoId);
         Video.QuizMarker marker = video.getQuizMarkers().stream()
                 .filter(item -> quizId.equals(item.getId()))
                 .findFirst()
@@ -100,5 +166,61 @@ public class VideoService {
 
     private String nonBlank(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private Video findVideo(String id) {
+        return videoRepository.findById(id)
+                .orElseThrow(() -> new com.kapor.common.exception.ResourceNotFoundException("Video", "id", id));
+    }
+
+    private void validateSubtitles(List<Video.SubtitleLine> korean, List<Video.SubtitleLine> vietnamese) {
+        if (korean == null || vietnamese == null) {
+            throw new IllegalArgumentException("Both Korean and Vietnamese subtitles are required");
+        }
+        if (korean.size() != vietnamese.size()) {
+            throw new IllegalArgumentException("Each Korean subtitle must have one Vietnamese subtitle");
+        }
+        double previousEnd = -1;
+        for (int index = 0; index < korean.size(); index++) {
+            Video.SubtitleLine ko = korean.get(index);
+            Video.SubtitleLine vi = vietnamese.get(index);
+            if (ko == null || vi == null || ko.getText() == null || ko.getText().isBlank()
+                    || vi.getText() == null || vi.getText().isBlank()) {
+                throw new IllegalArgumentException("Subtitle line " + (index + 1) + " must contain Korean and Vietnamese text");
+            }
+            if (!Double.isFinite(ko.getStart()) || !Double.isFinite(ko.getEnd())
+                    || !Double.isFinite(vi.getStart()) || !Double.isFinite(vi.getEnd())
+                    || ko.getStart() < 0 || ko.getEnd() <= ko.getStart()) {
+                throw new IllegalArgumentException("Subtitle line " + (index + 1) + " has an invalid timestamp");
+            }
+            if (Math.abs(ko.getStart() - vi.getStart()) > 0.001 || Math.abs(ko.getEnd() - vi.getEnd()) > 0.001) {
+                throw new IllegalArgumentException("Korean and Vietnamese timestamps must match on line " + (index + 1));
+            }
+            if (ko.getStart() < previousEnd) {
+                throw new IllegalArgumentException("Subtitle line " + (index + 1) + " overlaps the previous line");
+            }
+            previousEnd = ko.getEnd();
+        }
+    }
+
+    private void validateKoreanSubtitles(List<Video.SubtitleLine> korean) {
+        if (korean == null || korean.isEmpty()) {
+            throw new IllegalArgumentException("At least one Korean subtitle is required for tokenization");
+        }
+        double previousEnd = -1;
+        for (int index = 0; index < korean.size(); index++) {
+            Video.SubtitleLine line = korean.get(index);
+            if (line == null || line.getText() == null || line.getText().isBlank()) {
+                throw new IllegalArgumentException("Korean subtitle line " + (index + 1) + " must contain text");
+            }
+            if (!Double.isFinite(line.getStart()) || !Double.isFinite(line.getEnd())
+                    || line.getStart() < 0 || line.getEnd() <= line.getStart()) {
+                throw new IllegalArgumentException("Korean subtitle line " + (index + 1) + " has an invalid timestamp");
+            }
+            if (line.getStart() < previousEnd) {
+                throw new IllegalArgumentException("Korean subtitle line " + (index + 1) + " overlaps the previous line");
+            }
+            previousEnd = line.getEnd();
+        }
     }
 }

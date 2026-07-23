@@ -1539,6 +1539,95 @@ type AdminSection =
   | "analytics" | "analytics-users" | "analytics-content" | "analytics-ai"
   | "settings-prompts" | "settings-admins";
 
+type EditableSubtitle = { id: string; start: string; end: string; ko: string; vi: string; tokens?: unknown[]; tokenCount?: number };
+type ParsedSrtLine = { start: number; end: number; text: string };
+
+const youtubeVideoId = (video?: AdminVideoPayload | null) => {
+  const source = video?.youtubeVideoId || video?.youtubeUrl || "";
+  if (!source) return "";
+  const match = source.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([^?&/]+)/i);
+  return match?.[1] || (source.includes("/") ? "" : source.trim());
+};
+
+let youtubeApiReady: Promise<void> | undefined;
+const loadYouTubePlayerApi = () => {
+  if (window.YT?.Player) return Promise.resolve();
+  if (youtubeApiReady) return youtubeApiReady;
+  youtubeApiReady = new Promise((resolve, reject) => {
+    const previousReady = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => { previousReady?.(); resolve(); };
+    const existingScript = document.querySelector('script[src="https://www.youtube.com/iframe_api"]');
+    if (existingScript) return;
+    const script = document.createElement("script");
+    script.src = "https://www.youtube.com/iframe_api";
+    script.async = true;
+    script.onerror = () => reject(new Error("Unable to load the YouTube Player API."));
+    document.head.appendChild(script);
+  });
+  return youtubeApiReady;
+};
+
+const subtitlePayload = (rows: EditableSubtitle[]) => ({
+  koreanSubtitles: rows.map(row => ({ start: Number(row.start), end: Number(row.end), text: row.ko.trim(), tokens: row.tokens ?? [] })),
+  vietnameseSubtitles: rows.map(row => ({ start: Number(row.start), end: Number(row.end), text: row.vi.trim() })),
+});
+
+const koreanSubtitlePayload = (rows: EditableSubtitle[]) => ({
+  koreanSubtitles: rows.map(row => ({ start: Number(row.start), end: Number(row.end), text: row.ko.trim() })),
+});
+
+const koreanSubtitleValidationError = (rows: EditableSubtitle[]) => {
+  let previousEnd = -1;
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const start = Number(row.start);
+    const end = Number(row.end);
+    if (!row.ko.trim()) return `Line ${index + 1}: Korean text is required for tokenization.`;
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) return `Line ${index + 1}: enter a valid start and end time.`;
+    if (start < previousEnd) return `Line ${index + 1}: timestamps overlap the previous line.`;
+    previousEnd = end;
+  }
+  return "";
+};
+
+const subtitleValidationError = (rows: EditableSubtitle[]) => {
+  let previousEnd = -1;
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const start = Number(row.start);
+    const end = Number(row.end);
+    if (!row.ko.trim() || !row.vi.trim()) return `Line ${index + 1}: Korean and Vietnamese text are required.`;
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start) return `Line ${index + 1}: enter a valid start and end time.`;
+    if (start < previousEnd) return `Line ${index + 1}: timestamps overlap the previous line.`;
+    previousEnd = end;
+  }
+  return "";
+};
+
+const parseSrtTime = (value: string) => {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2}):(\d{2})[,.](\d{1,3})$/);
+  if (!match) throw new Error(`Invalid SRT timestamp: ${value}`);
+  const [, hours, minutes, seconds, milliseconds] = match;
+  return Number(hours) * 3600 + Number(minutes) * 60 + Number(seconds) + Number(milliseconds.padEnd(3, "0")) / 1000;
+};
+
+const parseSrt = (content: string): ParsedSrtLine[] => {
+  const blocks = content.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").trim().split(/\n\s*\n/).filter(Boolean);
+  if (!blocks.length) throw new Error("The SRT file is empty.");
+  return blocks.map((block, index) => {
+    const lines = block.split("\n").map(line => line.trim()).filter(Boolean);
+    if (/^\d+$/.test(lines[0])) lines.shift();
+    const timeRange = lines.shift();
+    const match = timeRange?.match(/^(.+?)\s*-->\s*(.+)$/);
+    if (!match) throw new Error(`Invalid time range in SRT block ${index + 1}.`);
+    const start = parseSrtTime(match[1]);
+    const end = parseSrtTime(match[2]);
+    const text = lines.join(" ").replace(/<[^>]+>/g, "").trim();
+    if (!text || end <= start) throw new Error(`Invalid subtitle content in SRT block ${index + 1}.`);
+    return { start, end, text };
+  });
+};
+
 function AdminPanel({ lang }: { lang: Lang }) {
   const [section, setSection] = useState<AdminSection>("dashboard");
   const [stats, setStats] = useState<any>(null);
@@ -1640,8 +1729,16 @@ function AdminPanel({ lang }: { lang: Lang }) {
   const contentPerformanceRows = popularContentData.map(item => ({ ...item, rate: 0 }));
   const [showSubEditor, setShowSubEditor] = useState(false);
   const [showAddVideo, setShowAddVideo] = useState(false);
-  const [editSubs, setEditSubs] = useState<{ id: string; start: string; end: string; ko: string; vi: string }[]>([]);
+  const [editSubs, setEditSubs] = useState<EditableSubtitle[]>([]);
   const [selectedVideo, setSelectedVideo] = useState<AdminVideoPayload | null>(null);
+  const [subtitleEditorError, setSubtitleEditorError] = useState("");
+  const [subtitleEditorNotice, setSubtitleEditorNotice] = useState("");
+  const [subtitleSaving, setSubtitleSaving] = useState(false);
+  const [subtitleTokenizing, setSubtitleTokenizing] = useState(false);
+  const [subtitlePreviewTime, setSubtitlePreviewTime] = useState(0);
+  const subtitlePreviewMountRef = useRef<HTMLDivElement | null>(null);
+  const youtubePlayerRef = useRef<any>(null);
+  const youtubePlayerReadyRef = useRef(false);
   const [contentOpen, setContentOpen] = useState(true);
   const [analyticsOpen, setAnalyticsOpen] = useState(true);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -1683,6 +1780,71 @@ function AdminPanel({ lang }: { lang: Lang }) {
   const [videoFilterDiff, setVideoFilterDiff] = useState("all");
   const [videoFilterSubs, setVideoFilterSubs] = useState("all");
   const [videoBulkSelected, setVideoBulkSelected] = useState<Set<string>>(new Set());
+
+  const currentSubtitleError = subtitleValidationError(editSubs);
+  const activeSubtitleIndex = editSubs.findIndex(row => subtitlePreviewTime >= Number(row.start) && subtitlePreviewTime < Number(row.end));
+  const previewVideoId = youtubeVideoId(selectedVideo);
+
+  const sendPreviewCommand = (func: string, args: unknown[] = []) => {
+    const player = youtubePlayerRef.current;
+    if (youtubePlayerReadyRef.current && player && typeof player[func] === "function") player[func](...args);
+  };
+
+  const seekPreview = (seconds: number) => {
+    setSubtitlePreviewTime(seconds);
+    sendPreviewCommand("seekTo", [seconds, true]);
+  };
+
+  const importSrt = async (file: File | undefined, language: "ko" | "vi") => {
+    if (!file) return;
+    try {
+      if (!file.name.toLowerCase().endsWith(".srt")) throw new Error("Please select an .srt file.");
+      const lines = parseSrt(await file.text());
+      setEditSubs(existing => lines.map((line, index) => ({
+        id: existing[index]?.id ?? `srt-${Date.now()}-${index}`,
+        start: String(line.start), end: String(line.end),
+        ko: language === "ko" ? line.text : existing[index]?.ko ?? "",
+        vi: language === "vi" ? line.text : existing[index]?.vi ?? "",
+        tokens: language === "ko" ? [] : existing[index]?.tokens,
+        tokenCount: language === "ko" ? undefined : existing[index]?.tokenCount,
+      })));
+      setSubtitleEditorError("");
+      setSubtitleEditorNotice(`${language === "ko" ? "Korean" : "Vietnamese"} SRT imported: ${lines.length} line${lines.length === 1 ? "" : "s"}. Review the paired column, then save.`);
+    } catch (error) {
+      setSubtitleEditorNotice("");
+      setSubtitleEditorError(error instanceof Error ? error.message : "Unable to import the SRT file.");
+    }
+  };
+
+  useEffect(() => {
+    if (!showSubEditor || !previewVideoId || !subtitlePreviewMountRef.current) return;
+    let cancelled = false;
+    void loadYouTubePlayerApi().then(() => {
+      if (cancelled || !subtitlePreviewMountRef.current) return;
+      youtubePlayerReadyRef.current = false;
+      youtubePlayerRef.current?.destroy?.();
+      subtitlePreviewMountRef.current.replaceChildren();
+      youtubePlayerRef.current = new window.YT.Player(subtitlePreviewMountRef.current, {
+        videoId: previewVideoId,
+        playerVars: { playsinline: 1, rel: 0, origin: window.location.origin },
+        events: {
+          onReady: () => { youtubePlayerReadyRef.current = true; setSubtitlePreviewTime(0); },
+          onError: () => { youtubePlayerReadyRef.current = false; setSubtitleEditorError("YouTube could not load this video for preview."); },
+        },
+      });
+    }).catch(error => setSubtitleEditorError(error instanceof Error ? error.message : "Unable to load the YouTube preview."));
+    return () => { cancelled = true; youtubePlayerReadyRef.current = false; youtubePlayerRef.current?.destroy?.(); youtubePlayerRef.current = null; };
+  }, [showSubEditor, previewVideoId]);
+
+  useEffect(() => {
+    if (!showSubEditor || !previewVideoId) return;
+    const timer = window.setInterval(() => {
+      if (!youtubePlayerReadyRef.current) return;
+      const currentTime = youtubePlayerRef.current?.getCurrentTime?.();
+      if (typeof currentTime === "number") setSubtitlePreviewTime(currentTime);
+    }, 300);
+    return () => window.clearInterval(timer);
+  }, [showSubEditor, previewVideoId]);
   const [analyticsTab, setAnalyticsTab] = useState<"overview" | "users" | "content" | "ai">("overview");
   const [lessonEditorTab, setLessonEditorTab] = useState<"vocab" | "exercises" | "preview">("vocab");
   const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
@@ -2908,7 +3070,12 @@ function AdminPanel({ lang }: { lang: Lang }) {
                   setVideoSaving(true); setVideoFormError("");
                   const saved = await api.createVideo({ ...videoForm, youtubeUrl: videoForm.youtubeUrl.trim(), title: videoForm.title.trim(), titleVi: videoForm.titleVi.trim() });
                   setVideos(rows => [...rows, saved]);
+                  setSelectedVideo(saved);
+                  setEditSubs([]);
+                  setSubtitleEditorError("");
+                  setSubtitleEditorNotice("Video created. Add its first subtitle line below.");
                   setShowAddVideo(false);
+                  setShowSubEditor(true);
                   setVideoForm({ title: "", titleVi: "", youtubeUrl: "", domain: "backend", difficulty: "beginner", durationSeconds: 0, koreanSubtitles: [], vietnameseSubtitles: [], quizMarkers: [] });
                 } catch (error) {
                   setVideoFormError(error instanceof Error ? error.message : "Unable to save video.");
@@ -2961,7 +3128,7 @@ function AdminPanel({ lang }: { lang: Lang }) {
                           <td style={{ padding: "12px 16px", fontSize: 12, color: subColor, fontFamily: "JetBrains Mono, monospace" }}>{v.subtitles}</td>
                           <td style={{ padding: "12px 16px", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "oklch(0.55 0.03 250)" }}>{v.quizzes}</td>
                           <td style={{ padding: "12px 16px" }}>
-                            <button onClick={() => { setSelectedVideo(v); setEditSubs((v.koreanSubtitles ?? []).map((line, index) => ({ id: String(index), start: String(line.start), end: String(line.end), ko: line.text, vi: v.vietnameseSubtitles?.[index]?.text ?? "" }))); setShowSubEditor(true); }} style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Edit Subs</button>
+                            <button onClick={() => { setSelectedVideo(v); setEditSubs((v.koreanSubtitles ?? []).map((line, index) => ({ id: `${v.id}-${index}`, start: String(line.start), end: String(line.end), ko: line.text, vi: v.vietnameseSubtitles?.[index]?.text ?? "", tokens: line.tokens ?? [], tokenCount: line.tokens?.length }))); setSubtitlePreviewTime(0); setSubtitleEditorError(""); setSubtitleEditorNotice(""); setShowSubEditor(true); }} style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Edit Subs</button>
                           </td>
                         </tr>
                       );
@@ -2978,48 +3145,53 @@ function AdminPanel({ lang }: { lang: Lang }) {
 
         {section === "content-videos" && showSubEditor && (
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
-              <button onClick={() => setShowSubEditor(false)} style={{ width: 32, height: 32, borderRadius: 10, background: "oklch(0.16 0.025 250)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <ChevronLeft size={16} color={TEAL} />
-              </button>
-              <h1 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 22, color: "oklch(0.92 0.01 250)", margin: 0 }}>Subtitle Editor</h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
+              <button onClick={() => { setShowSubEditor(false); setSubtitleEditorError(""); }} aria-label="Back to videos" style={{ width: 32, height: 32, borderRadius: 10, background: "oklch(0.16 0.025 250)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}><ChevronLeft size={16} color={TEAL} /></button>
+              <div><h1 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 22, color: "oklch(0.92 0.01 250)", margin: 0 }}>Subtitle Editor</h1><p style={{ margin: "3px 0 0", color: "oklch(0.48 0.03 250)", fontSize: 12 }}>{selectedVideo?.title || "Video"}</p></div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1.6fr", gap: 20 }}>
-              <div>
-                <div style={{ borderRadius: 14, overflow: "hidden", background: "#050d1a", aspectRatio: "16/9", display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 }}>
-                  <div style={{ textAlign: "center" }}>
-                    <Play size={32} color={TEAL} />
-                    <p style={{ fontSize: 11, color: "oklch(0.42 0.03 250)", fontFamily: "JetBrains Mono, monospace", margin: "8px 0 0" }}>DEVIEW 2025</p>
-                  </div>
+            <p style={{ fontSize: 11, color: "oklch(0.45 0.03 250)", margin: "0 0 18px", fontFamily: "JetBrains Mono, monospace" }}>Click a line to seek preview. Times are in seconds and are saved as Korean–Vietnamese pairs.</p>
+            {(subtitleEditorError || currentSubtitleError) && <p role="alert" style={{ padding: "10px 12px", borderRadius: 8, background: "#f8717112", border: "1px solid #f8717144", color: "#fca5a5", fontSize: 12, margin: "0 0 14px" }}>{subtitleEditorError || currentSubtitleError}</p>}
+            {subtitleEditorNotice && <p role="status" style={{ padding: "10px 12px", borderRadius: 8, background: `${TEAL}10`, border: `1px solid ${TEAL}35`, color: TEAL, fontSize: 12, margin: "0 0 14px" }}>{subtitleEditorNotice}</p>}
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(280px, .9fr) minmax(460px, 1.7fr)", gap: 20, alignItems: "start" }}>
+              <div style={{ position: "sticky", top: 16 }}>
+                <div style={{ borderRadius: 14, overflow: "hidden", background: "#050d1a", aspectRatio: "16/9", marginBottom: 10 }}>
+                  {previewVideoId ? <div ref={subtitlePreviewMountRef} aria-label={`Preview: ${selectedVideo?.title || "video"}`} style={{ width: "100%", height: "100%" }} /> : <div style={{ height: "100%", display: "grid", placeItems: "center", padding: 20, textAlign: "center", color: "oklch(0.48 0.03 250)", fontSize: 12 }}><Video size={28} color={TEAL} /><span>Valid YouTube URL required for preview.</span></div>}
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                    <Zap size={13} /> Auto-tokenize
-                  </button>
-                  <button style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: `1px solid ${TEAL}40`, background: `${TEAL}10`, color: TEAL, fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                    <Plus size={13} /> Add Line
-                  </button>
+                <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                  <button onClick={() => sendPreviewCommand("playVideo")} disabled={!previewVideoId} aria-label="Play preview" style={{ width: 38, borderRadius: 8, border: "none", background: TEAL, color: "#001310", cursor: previewVideoId ? "pointer" : "not-allowed" }}><Play size={15} /></button>
+                  <button onClick={() => sendPreviewCommand("pauseVideo")} disabled={!previewVideoId} aria-label="Pause preview" style={{ width: 38, borderRadius: 8, border: `1px solid ${TEAL}55`, background: `${TEAL}10`, color: TEAL, cursor: previewVideoId ? "pointer" : "not-allowed" }}><Pause size={15} /></button>
+                  <div style={{ flex: 1, padding: "8px 10px", borderRadius: 8, background: "oklch(0.10 0.02 250)", color: TEAL, fontSize: 12, fontFamily: "JetBrains Mono, monospace" }}>{subtitlePreviewTime.toFixed(1)}s</div>
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  <button onClick={() => { const start = Number((subtitlePreviewTime || (editSubs.length ? Number(editSubs[editSubs.length - 1].end) : 0)).toFixed(1)); setEditSubs(rows => [...rows, { id: `${Date.now()}-${rows.length}`, start: String(start), end: String(Number((start + 3).toFixed(1))), ko: "", vi: "", tokens: [], tokenCount: undefined }]); setSubtitleEditorError(""); setSubtitleEditorNotice(""); }} style={{ padding: "9px 12px", borderRadius: 8, border: `1px solid ${TEAL}50`, background: `${TEAL}10`, color: TEAL, fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 12, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Plus size={14} /> Add line at current time</button>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    {(["ko", "vi"] as const).map(language => (
+                      <label key={language} style={{ padding: "9px 8px", borderRadius: 8, border: "1px dashed oklch(0.30 0.04 250)", background: "oklch(0.10 0.02 250)", color: "oklch(0.76 0.02 250)", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 11, cursor: "pointer", textAlign: "center" }}>
+                        Import {language === "ko" ? "KR" : "VI"} SRT
+                        <input type="file" accept=".srt,text/plain" onClick={event => { event.currentTarget.value = ""; }} onChange={event => { void importSrt(event.currentTarget.files?.[0], language); }} style={{ display: "none" }} />
+                      </label>
+                    ))}
+                  </div>
+                  <p style={{ margin: "-2px 0 0", color: "oklch(0.43 0.03 250)", fontSize: 10, lineHeight: 1.4 }}>Import Korean and Vietnamese files separately. The latest import replaces timings and text for its language.</p>
+                  <button onClick={async () => { if (!selectedVideo?.id) return; const error = koreanSubtitleValidationError(editSubs); if (error) { setSubtitleEditorError(error); return; } try { setSubtitleTokenizing(true); setSubtitleEditorError(""); setSubtitleEditorNotice("Gemini is translating and tokenizing the Korean subtitles…"); const saved = await api.analyzeVideoSubtitlesWithAi(selectedVideo.id, koreanSubtitlePayload(editSubs)); const tokenTotal = saved.koreanSubtitles?.reduce((total, line) => total + (line.tokens?.length ?? 0), 0) ?? 0; setEditSubs(rows => rows.map((row, index) => ({ ...row, vi: saved.vietnameseSubtitles?.[index]?.text ?? row.vi, tokens: saved.koreanSubtitles?.[index]?.tokens ?? [], tokenCount: saved.koreanSubtitles?.[index]?.tokens?.length ?? 0 }))); setSelectedVideo(saved); setVideos(rows => rows.map(row => row.id === saved.id ? saved : row)); setSubtitleEditorNotice(`Gemini translated ${editSubs.length} lines and created ${tokenTotal} Korean tokens. Review, then save.`); } catch (error) { setSubtitleEditorNotice(""); setSubtitleEditorError(error instanceof Error ? error.message : "Gemini could not analyze the Korean subtitles."); } finally { setSubtitleTokenizing(false); } }} disabled={subtitleTokenizing || subtitleSaving || !editSubs.length} style={{ padding: "9px 12px", borderRadius: 8, border: "none", background: TEAL, color: "#001310", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 12, cursor: subtitleTokenizing || !editSubs.length ? "wait" : "pointer", opacity: !editSubs.length ? .55 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Zap size={14} /> {subtitleTokenizing ? "Gemini processing…" : "AI translate & tokenize"}</button>
                 </div>
               </div>
               <div style={{ borderRadius: 14, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.20 0.03 250)", overflow: "hidden" }}>
-                <div style={{ padding: "12px 16px", borderBottom: "1px solid oklch(0.18 0.03 250)", display: "grid", gridTemplateColumns: "72px 1fr 1fr", gap: 8 }}>
-                  {["Time", "Korean (KR)", "Vietnamese (VI)"].map(h => (
-                    <span key={h} style={{ fontSize: 10, color: "oklch(0.42 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>{h}</span>
-                  ))}
+                <div style={{ padding: "12px 16px", borderBottom: "1px solid oklch(0.18 0.03 250)", display: "grid", gridTemplateColumns: "130px 1fr 1fr 28px", gap: 8 }}>
+                  {["Time (sec)", "Korean (KR)", "Vietnamese (VI)", ""].map((h, index) => <span key={index} style={{ fontSize: 10, color: "oklch(0.42 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>{h}</span>)}
                 </div>
-                {editSubs.map((row, i) => (
-                  <div key={row.id} style={{ padding: "10px 16px", borderBottom: "1px solid oklch(0.14 0.025 250)", display: "grid", gridTemplateColumns: "72px 1fr 1fr", gap: 8, alignItems: "start" }}>
-                    <div>
-                      <p style={{ fontSize: 10, color: TEAL, fontFamily: "JetBrains Mono, monospace", margin: 0 }}>{row.start}</p>
-                      <p style={{ fontSize: 10, color: "oklch(0.36 0.03 250)", fontFamily: "JetBrains Mono, monospace", margin: 0 }}>→ {row.end}</p>
-                    </div>
-                    <textarea value={row.ko} onChange={e => { const next = [...editSubs]; next[i] = { ...next[i], ko: e.target.value }; setEditSubs(next); }} rows={2} style={{ width: "100%", borderRadius: 6, padding: "6px 8px", background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.20 0.03 250)", color: "oklch(0.82 0.01 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 11, outline: "none", resize: "none", boxSizing: "border-box" }} />
-                    <textarea value={row.vi} onChange={e => { const next = [...editSubs]; next[i] = { ...next[i], vi: e.target.value }; setEditSubs(next); }} rows={2} style={{ width: "100%", borderRadius: 6, padding: "6px 8px", background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.20 0.03 250)", color: "oklch(0.75 0.01 250)", fontFamily: "Inter, sans-serif", fontSize: 11, outline: "none", resize: "none", boxSizing: "border-box" }} />
-                  </div>
-                ))}
-                <div style={{ padding: "12px 16px" }}>
-                  <button onClick={async () => { if (!selectedVideo?.id) return; const koreanSubtitles = editSubs.map(row => ({ start: Number(row.start), end: Number(row.end), text: row.ko, tokens: [] })); const vietnameseSubtitles = editSubs.map(row => ({ start: Number(row.start), end: Number(row.end), text: row.vi, tokens: [] })); const saved = await api.updateVideo(selectedVideo.id, { ...selectedVideo, koreanSubtitles, vietnameseSubtitles }); setVideos(rows => rows.map(row => row.id === saved.id ? saved : row)); setShowSubEditor(false); }} style={{ padding: "9px 20px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Save Changes</button>
-                </div>
+                {editSubs.map((row, index) => {
+                  const active = index === activeSubtitleIndex;
+                  const update = (field: keyof EditableSubtitle, value: string) => setEditSubs(rows => rows.map(item => item.id === row.id ? { ...item, [field]: value } : item));
+                  return <div key={row.id} onClick={() => seekPreview(Number(row.start) || 0)} style={{ padding: "10px 16px", borderBottom: "1px solid oklch(0.14 0.025 250)", display: "grid", gridTemplateColumns: "130px 1fr 1fr 28px", gap: 8, alignItems: "start", background: active ? `${TEAL}0d` : "transparent", cursor: "pointer" }}>
+                    <div style={{ display: "flex", gap: 5 }} onClick={event => event.stopPropagation()}><input aria-label={`Line ${index + 1} start time`} value={row.start} inputMode="decimal" onChange={event => update("start", event.target.value)} style={{ minWidth: 0, width: "100%", padding: "6px", borderRadius: 6, background: "oklch(0.10 0.02 250)", border: `1px solid ${active ? TEAL : "oklch(0.20 0.03 250)"}`, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11 }} /><input aria-label={`Line ${index + 1} end time`} value={row.end} inputMode="decimal" onChange={event => update("end", event.target.value)} style={{ minWidth: 0, width: "100%", padding: "6px", borderRadius: 6, background: "oklch(0.10 0.02 250)", border: `1px solid ${active ? TEAL : "oklch(0.20 0.03 250)"}`, color: "oklch(0.62 0.03 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 11 }} /></div>
+                    <div><textarea aria-label={`Line ${index + 1} Korean`} value={row.ko} onClick={event => event.stopPropagation()} onChange={event => update("ko", event.target.value)} rows={2} style={{ width: "100%", borderRadius: 6, padding: "6px 8px", background: "oklch(0.10 0.02 250)", border: `1px solid ${active ? TEAL : "oklch(0.20 0.03 250)"}`, color: "oklch(0.82 0.01 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 11, outline: "none", resize: "vertical", boxSizing: "border-box" }} />{row.tokenCount !== undefined && <p style={{ margin: "4px 2px 0", color: TEAL, fontSize: 10, fontFamily: "JetBrains Mono, monospace" }}>✓ {row.tokenCount} token{row.tokenCount === 1 ? "" : "s"}</p>}</div>
+                    <textarea aria-label={`Line ${index + 1} Vietnamese`} value={row.vi} onClick={event => event.stopPropagation()} onChange={event => update("vi", event.target.value)} rows={2} style={{ width: "100%", borderRadius: 6, padding: "6px 8px", background: "oklch(0.10 0.02 250)", border: `1px solid ${active ? TEAL : "oklch(0.20 0.03 250)"}`, color: "oklch(0.75 0.01 250)", fontFamily: "Inter, sans-serif", fontSize: 11, outline: "none", resize: "vertical", boxSizing: "border-box" }} />
+                    <button onClick={event => { event.stopPropagation(); setEditSubs(rows => rows.filter(item => item.id !== row.id)); }} aria-label={`Delete subtitle line ${index + 1}`} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #f8717140", background: "#f8717110", color: "#f87171", cursor: "pointer", display: "grid", placeItems: "center" }}><X size={14} /></button>
+                  </div>;
+                })}
+                {!editSubs.length && <p style={{ padding: "36px 18px", margin: 0, textAlign: "center", color: "oklch(0.45 0.03 250)", fontSize: 12 }}>No subtitles yet. Add the first line from the preview panel.</p>}
+                <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}><span style={{ fontSize: 11, color: "oklch(0.45 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>{editSubs.length} line{editSubs.length === 1 ? "" : "s"}</span><button onClick={async () => { if (!selectedVideo?.id) return; const sorted = [...editSubs].sort((a, b) => Number(a.start) - Number(b.start)); const error = subtitleValidationError(sorted); if (error) { setSubtitleEditorError(error); return; } try { setSubtitleSaving(true); setSubtitleEditorError(""); const saved = await api.updateVideoSubtitles(selectedVideo.id, subtitlePayload(sorted)); setEditSubs(sorted); setSelectedVideo(saved); setVideos(rows => rows.map(row => row.id === saved.id ? saved : row)); setSubtitleEditorNotice("Subtitle changes saved."); } catch (error) { setSubtitleEditorError(error instanceof Error ? error.message : "Unable to save subtitles."); } finally { setSubtitleSaving(false); } }} disabled={subtitleSaving || subtitleTokenizing || Boolean(currentSubtitleError)} style={{ padding: "9px 20px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: subtitleSaving ? "wait" : "pointer", opacity: currentSubtitleError ? .55 : 1 }}>{subtitleSaving ? "Saving…" : "Save changes"}</button></div>
               </div>
             </div>
           </div>

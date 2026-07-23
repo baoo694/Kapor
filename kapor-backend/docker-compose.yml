@@ -4,6 +4,8 @@ services:
   # ---- Core Application ----
   kapor-api:
     build: .
+    env_file:
+      - .env.local
     ports:
       - "8080:8080"
     environment:
@@ -13,7 +15,6 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      GEMINI_API_KEY: ${GEMINI_API_KEY}
       JWT_SECRET: ${JWT_SECRET}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       NLP_SERVICE_URL: http://kapor-nlp:8001
