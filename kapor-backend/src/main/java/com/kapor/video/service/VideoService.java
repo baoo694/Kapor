@@ -4,6 +4,7 @@ import com.kapor.video.dto.VideoDto;
 import com.kapor.video.dto.SubtitleUpdateRequest;
 import com.kapor.video.dto.SubtitleTokenizeRequest;
 import com.kapor.video.dto.SubtitleAiAnalyzeRequest;
+import com.kapor.video.dto.SubtitleTranslateRequest;
 import com.kapor.video.model.Video;
 import com.kapor.video.repository.VideoRepository;
 import lombok.RequiredArgsConstructor;
@@ -90,6 +91,58 @@ public class VideoService {
         validateKoreanSubtitles(request.getKoreanSubtitles());
         request.getKoreanSubtitles().forEach(line -> line.setTokens(subtitleTokenizer.tokenize(line.getText())));
         video.setKoreanSubtitles(request.getKoreanSubtitles());
+        return VideoDto.fromEntity(videoRepository.save(video));
+    }
+
+    public VideoDto tokenizeKoreanSubtitlesWithAi(String id, SubtitleTokenizeRequest request) {
+        Video video = findVideo(id);
+        List<Video.SubtitleLine> korean = request.getKoreanSubtitles();
+        validateKoreanSubtitles(korean);
+        int batchSize = Math.max(1, geminiSubtitleBatchSize);
+
+        for (int start = 0; start < korean.size(); start += batchSize) {
+            int end = Math.min(start + batchSize, korean.size());
+            List<Video.SubtitleLine> batch = korean.subList(start, end);
+            List<GeminiSubtitleService.TokenizationLine> tokenization = geminiSubtitleService.tokenize(batch);
+            for (GeminiSubtitleService.TokenizationLine result : tokenization) {
+                Video.SubtitleLine koreanLine = batch.get(result.index());
+                koreanLine.setTokens(result.tokens().stream()
+                        .filter(token -> koreanLine.getText().contains(token.getSurface()))
+                        .collect(Collectors.toList()));
+            }
+        }
+
+        video.setKoreanSubtitles(korean);
+        return VideoDto.fromEntity(videoRepository.save(video));
+    }
+
+    public VideoDto translateSubtitlesWithAi(String id, SubtitleTranslateRequest request) {
+        Video video = findVideo(id);
+        List<Video.SubtitleLine> korean = request.getKoreanSubtitles();
+        validateKoreanSubtitles(korean);
+        List<Video.SubtitleLine> vietnamese = new java.util.ArrayList<>();
+        int batchSize = Math.max(1, geminiSubtitleBatchSize);
+
+        for (int start = 0; start < korean.size(); start += batchSize) {
+            int end = Math.min(start + batchSize, korean.size());
+            List<Video.SubtitleLine> batch = korean.subList(start, end);
+            List<GeminiSubtitleService.TranslationLine> translations = geminiSubtitleService.translate(batch);
+            for (GeminiSubtitleService.TranslationLine result : translations) {
+                Video.SubtitleLine koreanLine = batch.get(result.index());
+                vietnamese.add(Video.SubtitleLine.builder()
+                        .start(koreanLine.getStart())
+                        .end(koreanLine.getEnd())
+                        .text(result.vietnamese())
+                        .tokens(List.of())
+                        .build());
+            }
+        }
+
+        if (vietnamese.size() != korean.size()) {
+            throw new IllegalStateException("Gemini did not return every subtitle translation");
+        }
+        video.setKoreanSubtitles(korean);
+        video.setVietnameseSubtitles(vietnamese);
         return VideoDto.fromEntity(videoRepository.save(video));
     }
 

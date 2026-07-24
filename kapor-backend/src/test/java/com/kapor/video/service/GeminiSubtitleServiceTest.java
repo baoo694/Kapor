@@ -31,4 +31,33 @@ class GeminiSubtitleServiceTest {
         assertThat(tokenProperties.path("exampleKo").isObject()).isTrue();
         assertThat(config.has("responseFormat")).isFalse();
     }
+
+    @Test
+    void usesATranslationOnlySchemaForSubtitleTranslations() {
+        GeminiSubtitleService service = new GeminiSubtitleService(WebClient.builder(), new ObjectMapper());
+        Video.SubtitleLine subtitle = Video.SubtitleLine.builder().text("안녕하세요").build();
+
+        JsonNode body = ReflectionTestUtils.invokeMethod(service, "translationRequestBody", List.of(subtitle));
+        JsonNode lineProperties = body.path("generationConfig").path("responseJsonSchema")
+                .path("properties").path("lines").path("items").path("properties");
+
+        assertThat(lineProperties.path("index").isObject()).isTrue();
+        assertThat(lineProperties.path("vietnamese").isObject()).isTrue();
+        assertThat(lineProperties.has("tokens")).isFalse();
+    }
+
+    @Test
+    void usesATokenizationOnlySchemaForSubtitleTokens() {
+        GeminiSubtitleService service = new GeminiSubtitleService(WebClient.builder(), new ObjectMapper());
+        Video.SubtitleLine subtitle = Video.SubtitleLine.builder().text("안녕하세요").build();
+
+        JsonNode body = ReflectionTestUtils.invokeMethod(service, "tokenizationRequestBody", List.of(subtitle));
+        JsonNode lineProperties = body.path("generationConfig").path("responseJsonSchema")
+                .path("properties").path("lines").path("items").path("properties");
+        JsonNode tokenProperties = lineProperties.path("tokens").path("items").path("properties");
+
+        assertThat(lineProperties.path("index").isObject()).isTrue();
+        assertThat(lineProperties.has("vietnamese")).isFalse();
+        assertThat(tokenProperties.path("exampleKo").isObject()).isTrue();
+    }
 }

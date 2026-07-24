@@ -5,6 +5,7 @@ import com.kapor.video.dto.VideoDto;
 import com.kapor.video.dto.SubtitleUpdateRequest;
 import com.kapor.video.dto.SubtitleTokenizeRequest;
 import com.kapor.video.dto.SubtitleAiAnalyzeRequest;
+import com.kapor.video.dto.SubtitleTranslateRequest;
 import jakarta.validation.Valid;
 import com.kapor.video.service.VideoService;
 import lombok.RequiredArgsConstructor;
@@ -45,6 +46,18 @@ public class AdminVideoController {
     public ResponseEntity<ApiResponse<VideoDto>> tokenizeSubtitles(
             @PathVariable String id, @Valid @RequestBody SubtitleTokenizeRequest request) {
         return ResponseEntity.ok(ApiResponse.ok(videoService.tokenizeKoreanSubtitles(id, request)));
+    }
+
+    @PostMapping("/{id}/subtitles/ai-tokenize")
+    public ResponseEntity<ApiResponse<VideoDto>> tokenizeSubtitlesWithAi(
+            @PathVariable String id, @Valid @RequestBody SubtitleTokenizeRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(videoService.tokenizeKoreanSubtitlesWithAi(id, request)));
+    }
+
+    @PostMapping("/{id}/subtitles/translate")
+    public ResponseEntity<ApiResponse<VideoDto>> translateSubtitles(
+            @PathVariable String id, @Valid @RequestBody SubtitleTranslateRequest request) {
+        return ResponseEntity.ok(ApiResponse.ok(videoService.translateSubtitlesWithAi(id, request)));
     }
 
     @PostMapping("/{id}/subtitles/ai-analyze")

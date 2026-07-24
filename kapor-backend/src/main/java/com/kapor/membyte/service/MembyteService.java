@@ -16,6 +16,8 @@ import com.kapor.membyte.model.MembyteDeck;
 import com.kapor.membyte.model.MembyteFlashcard;
 import com.kapor.membyte.repository.MembyteDeckRepository;
 import com.kapor.membyte.repository.MembyteFlashcardRepository;
+import com.kapor.video.model.Video;
+import com.kapor.video.repository.VideoRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -36,6 +38,7 @@ public class MembyteService {
     private final MembyteFlashcardRepository flashcardRepository;
     private final LessonRepository lessonRepository;
     private final TopicRepository topicRepository;
+    private final VideoRepository videoRepository;
     private final FsrsService fsrsService;
 
     public MembyteSaveCardDto saveVocabulary(String userId, String lessonId, String vocabularyId) {
@@ -106,6 +109,80 @@ public class MembyteService {
                 .build();
     }
 
+    public MembyteSaveCardDto saveVideoToken(String userId, String videoId, String surface) {
+        Video video = videoRepository.findById(videoId)
+                .orElseThrow(() -> new ResourceNotFoundException("Video", "id", videoId));
+        VideoTokenMatch tokenMatch = findVideoToken(video, surface);
+        if (tokenMatch == null) {
+            throw new ResourceNotFoundException("Video token", "surface", surface);
+        }
+
+        // Reuse the existing lesson-based indexes with a namespaced source id.
+        // This keeps one personal deck per video without a data migration.
+        String videoSourceId = "video:" + videoId;
+        Instant now = Instant.now();
+        MembyteDeck deck = deckRepository.findByUserIdAndLessonId(userId, videoSourceId)
+                .orElseGet(() -> deckRepository.save(MembyteDeck.builder()
+                        .userId(userId)
+                        .lessonId(videoSourceId)
+                        .domain(video.getDomain())
+                        .title(video.getTitle())
+                        .titleVi(video.getTitleVi())
+                        .createdAt(now)
+                        .updatedAt(now)
+                        .build()));
+
+        Video.TokenizedWord token = tokenMatch.token();
+        String savedWord = token.getStem() == null || token.getStem().isBlank()
+                ? token.getSurface()
+                : token.getStem();
+        MembyteFlashcard existing = flashcardRepository.findByUserIdAndLessonId(userId, videoSourceId).stream()
+                .filter(card -> savedWord.equals(card.getVocabularyId())
+                        || token.getSurface().equals(card.getVocabularyId())
+                        || savedWord.equals(card.getKorean()))
+                .findFirst()
+                .orElse(null);
+        if (existing != null) {
+            applyVideoTokenDetails(existing, token, tokenMatch.subtitleText(), savedWord);
+            flashcardRepository.save(existing);
+            return MembyteSaveCardDto.builder()
+                    .deckId(existing.getDeckId())
+                    .cardId(existing.getId())
+                    .vocabularyId(savedWord)
+                    .alreadySaved(true)
+                    .build();
+        }
+        MembyteFlashcard saved = flashcardRepository.save(MembyteFlashcard.builder()
+                .userId(userId)
+                .deckId(deck.getId())
+                .lessonId(videoSourceId)
+                .vocabularyId(savedWord)
+                .korean(savedWord)
+                .pronunciation(token.getPronunciation())
+                .vietnamese(token.getMeaningVi())
+                .english(token.getMeaningEn())
+                .definitionEn(token.getDefinitionEn())
+                .exampleKo(token.getExampleKo())
+                .grammarNote(token.getGrammarNote())
+                .context(tokenMatch.subtitleText())
+                .isNew(true)
+                .repetitions(0)
+                .lapses(0)
+                .difficulty(0)
+                .stability(0)
+                .createdAt(now)
+                .build());
+        deck.setUpdatedAt(now);
+        deckRepository.save(deck);
+
+        return MembyteSaveCardDto.builder()
+                .deckId(deck.getId())
+                .cardId(saved.getId())
+                .vocabularyId(savedWord)
+                .alreadySaved(false)
+                .build();
+    }
+
     public MembyteSavedCardsDto getSavedVocabularyIds(String userId, String lessonId) {
         Set<String> vocabularyIds = flashcardRepository.findByUserIdAndLessonId(userId, lessonId).stream()
                 .map(MembyteFlashcard::getVocabularyId)
@@ -148,6 +225,8 @@ public class MembyteService {
                     .orElseThrow(() -> new ResourceNotFoundException("Deck", "id", deckId));
             cards = flashcardRepository.findByUserIdAndDeckIdOrderByCreatedAtAsc(userId, deckId);
         }
+
+        enrichVideoFlashcards(cards);
 
         return cards.stream()
                 .filter(card -> isDue(card, now) || (includeNew && card.isNew()))
@@ -202,6 +281,9 @@ public class MembyteService {
                 .pronunciation(card.getPronunciation())
                 .vietnamese(card.getVietnamese())
                 .english(card.getEnglish())
+                .definitionEn(card.getDefinitionEn())
+                .exampleKo(card.getExampleKo())
+                .grammarNote(card.getGrammarNote())
                 .context(card.getContext())
                 .codeSnippet(card.getCodeSnippet())
                 .audioUrl(card.getAudioUrl())
@@ -211,6 +293,77 @@ public class MembyteService {
 
     private boolean isDue(MembyteFlashcard card, Instant now) {
         return !card.isNew() && card.getDueAt() != null && !card.getDueAt().isAfter(now);
+    }
+
+    private VideoTokenMatch findVideoToken(Video video, String surface) {
+        if (video.getKoreanSubtitles() == null) return null;
+        for (Video.SubtitleLine subtitle : video.getKoreanSubtitles()) {
+            if (subtitle.getTokens() == null) continue;
+            for (Video.TokenizedWord token : subtitle.getTokens()) {
+                if (surface.equals(token.getSurface())) {
+                    return new VideoTokenMatch(token, subtitle.getText());
+                }
+            }
+        }
+        return null;
+    }
+
+    private void applyVideoTokenDetails(
+            MembyteFlashcard card,
+            Video.TokenizedWord token,
+            String subtitleText,
+            String savedWord) {
+        card.setVocabularyId(savedWord);
+        card.setKorean(savedWord);
+        card.setPronunciation(token.getPronunciation());
+        card.setVietnamese(token.getMeaningVi());
+        card.setEnglish(token.getMeaningEn());
+        card.setDefinitionEn(token.getDefinitionEn());
+        card.setExampleKo(token.getExampleKo());
+        card.setGrammarNote(token.getGrammarNote());
+        card.setContext(subtitleText);
+    }
+
+    private void enrichVideoFlashcards(List<MembyteFlashcard> cards) {
+        for (MembyteFlashcard card : cards) {
+            if (card.getLessonId() == null || !card.getLessonId().startsWith("video:")) continue;
+            String videoId = card.getLessonId().substring("video:".length());
+            Video video = videoRepository.findById(videoId).orElse(null);
+            if (video == null || video.getKoreanSubtitles() == null) continue;
+            VideoTokenMatch match = findVideoTokenForCard(video, card);
+            if (match == null) continue;
+            Video.TokenizedWord token = match.token();
+            String savedWord = token.getStem() == null || token.getStem().isBlank()
+                    ? token.getSurface()
+                    : token.getStem();
+            card.setKorean(savedWord);
+            card.setPronunciation(token.getPronunciation());
+            card.setVietnamese(token.getMeaningVi());
+            card.setEnglish(token.getMeaningEn());
+            card.setDefinitionEn(token.getDefinitionEn());
+            card.setExampleKo(token.getExampleKo());
+            card.setGrammarNote(token.getGrammarNote());
+            card.setContext(match.subtitleText());
+            flashcardRepository.save(card);
+        }
+    }
+
+    private VideoTokenMatch findVideoTokenForCard(Video video, MembyteFlashcard card) {
+        for (Video.SubtitleLine subtitle : video.getKoreanSubtitles()) {
+            if (subtitle.getTokens() == null) continue;
+            for (Video.TokenizedWord token : subtitle.getTokens()) {
+                if (card.getVocabularyId().equals(token.getSurface())
+                        || card.getVocabularyId().equals(token.getStem())
+                        || card.getKorean().equals(token.getSurface())
+                        || card.getKorean().equals(token.getStem())) {
+                    return new VideoTokenMatch(token, subtitle.getText());
+                }
+            }
+        }
+        return null;
+    }
+
+    private record VideoTokenMatch(Video.TokenizedWord token, String subtitleText) {
     }
 
     private String joinLabels(String topicLabel, String lessonLabel) {

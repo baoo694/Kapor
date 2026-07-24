@@ -8,6 +8,7 @@ import com.kapor.membyte.dto.MembyteReviewRatingRequest;
 import com.kapor.membyte.dto.MembyteReviewResultDto;
 import com.kapor.membyte.dto.MembyteReviewSummaryDto;
 import com.kapor.membyte.dto.MembyteSaveCardDto;
+import com.kapor.membyte.dto.MembyteSaveVideoTokenRequest;
 import com.kapor.membyte.dto.MembyteSavedCardsDto;
 import com.kapor.membyte.service.MembyteService;
 import jakarta.validation.Valid;
@@ -38,6 +39,19 @@ public class MembyteController {
             Authentication authentication) {
         MembyteSaveCardDto result = membyteService.saveVocabulary(userId(authentication), lessonId, vocabularyId);
         String message = result.isAlreadySaved() ? "Flashcard đã có trong MemByte" : "Đã thêm flashcard vào MemByte";
+        return ResponseEntity.ok(ApiResponse.ok(result, message));
+    }
+
+    @PostMapping("/videos/{videoId}/flashcards")
+    public ResponseEntity<ApiResponse<MembyteSaveCardDto>> saveVideoToken(
+            @PathVariable String videoId,
+            @Valid @RequestBody MembyteSaveVideoTokenRequest request,
+            Authentication authentication) {
+        MembyteSaveCardDto result = membyteService.saveVideoToken(
+                userId(authentication), videoId, request.getSurface());
+        String message = result.isAlreadySaved()
+                ? "Flashcard đã có trong bộ thẻ video"
+                : "Đã thêm flashcard vào bộ thẻ video";
         return ResponseEntity.ok(ApiResponse.ok(result, message));
     }
 

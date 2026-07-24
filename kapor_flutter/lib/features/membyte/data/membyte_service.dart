@@ -55,6 +55,9 @@ class MemByteReviewCard {
   final String pronunciation;
   final String vietnamese;
   final String english;
+  final String definitionEn;
+  final String exampleKo;
+  final String grammarNote;
   final String context;
   final String codeSnippet;
   final String audioUrl;
@@ -67,6 +70,9 @@ class MemByteReviewCard {
     required this.pronunciation,
     required this.vietnamese,
     required this.english,
+    required this.definitionEn,
+    required this.exampleKo,
+    required this.grammarNote,
     required this.context,
     required this.codeSnippet,
     required this.audioUrl,
@@ -82,6 +88,9 @@ class MemByteReviewCard {
       pronunciation: json['pronunciation']?.toString() ?? '',
       vietnamese: json['vietnamese']?.toString() ?? '',
       english: json['english']?.toString() ?? '',
+      definitionEn: json['definitionEn']?.toString() ?? '',
+      exampleKo: json['exampleKo']?.toString() ?? '',
+      grammarNote: json['grammarNote']?.toString() ?? '',
       context: json['context']?.toString() ?? '',
       codeSnippet: json['codeSnippet']?.toString() ?? '',
       audioUrl: json['audioUrl']?.toString() ?? '',

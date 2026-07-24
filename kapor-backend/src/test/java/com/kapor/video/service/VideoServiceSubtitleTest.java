@@ -3,6 +3,7 @@ package com.kapor.video.service;
 import com.kapor.video.dto.SubtitleUpdateRequest;
 import com.kapor.video.dto.SubtitleTokenizeRequest;
 import com.kapor.video.dto.SubtitleAiAnalyzeRequest;
+import com.kapor.video.dto.SubtitleTranslateRequest;
 import com.kapor.video.dto.VideoDto;
 import com.kapor.video.model.Video;
 import com.kapor.video.repository.VideoRepository;
@@ -93,6 +94,46 @@ class VideoServiceSubtitleTest {
 
         assertThat(result.getVietnameseSubtitles().get(0).getText()).isEqualTo("Xin chào mọi người");
         assertThat(result.getKoreanSubtitles().get(0).getTokens().get(0).getMeaningVi()).isEqualTo("xin chào");
+    }
+
+    @Test
+    void aiTranslationCreatesVietnamesePairsWithoutTokenizingKorean() {
+        AtomicReference<Video> saved = new AtomicReference<>();
+        GeminiSubtitleService ai = new GeminiSubtitleService(null, null) {
+            @Override
+            public List<TranslationLine> translate(List<Video.SubtitleLine> subtitles) {
+                return List.of(new TranslationLine(0, "Xin chào mọi người"));
+            }
+        };
+        VideoService service = serviceFor(Video.builder().id("video-1").build(), saved, ai);
+        SubtitleTranslateRequest request = new SubtitleTranslateRequest();
+        request.setKoreanSubtitles(List.of(line(0, 2, "안녕하세요 여러분")));
+
+        VideoDto result = service.translateSubtitlesWithAi("video-1", request);
+
+        assertThat(result.getVietnameseSubtitles().get(0).getText()).isEqualTo("Xin chào mọi người");
+        assertThat(result.getKoreanSubtitles().get(0).getTokens()).isEmpty();
+    }
+
+    @Test
+    void aiTokenizationAddsLearnerDetailsAndExamplesWithoutTranslating() {
+        AtomicReference<Video> saved = new AtomicReference<>();
+        GeminiSubtitleService ai = new GeminiSubtitleService(null, null) {
+            @Override
+            public List<TokenizationLine> tokenize(List<Video.SubtitleLine> subtitles) {
+                return List.of(new TokenizationLine(0, List.of(
+                        Video.TokenizedWord.builder().surface("개발자").stem("개발자").pos("NOUN")
+                                .meaningVi("lập trình viên").exampleKo("저는 개발자입니다.").clickable(true).build())));
+            }
+        };
+        VideoService service = serviceFor(Video.builder().id("video-1").build(), saved, ai);
+        SubtitleTokenizeRequest request = new SubtitleTokenizeRequest();
+        request.setKoreanSubtitles(List.of(line(0, 2, "저는 개발자입니다")));
+
+        VideoDto result = service.tokenizeKoreanSubtitlesWithAi("video-1", request);
+
+        assertThat(result.getVietnameseSubtitles()).isEmpty();
+        assertThat(result.getKoreanSubtitles().get(0).getTokens().get(0).getExampleKo()).isEqualTo("저는 개발자입니다.");
     }
 
     private VideoService serviceFor(Video video, AtomicReference<Video> saved) {

@@ -219,10 +219,15 @@ const corrections = [
 ];
 
 const videoSubtitles = [
-  { id: 0, ko: "서버리스 아키텍처에 대해 설명하겠습니다", vi: "Tôi sẽ giải thích về kiến trúc Serverless", tokens: ["서버리스", "아키텍처에", "대해", "설명하겠습니다"] },
-  { id: 1, ko: "배포가 자동으로 처리됩니다", vi: "Việc triển khai được xử lý tự động", tokens: ["배포가", "자동으로", "처리됩니다"] },
-  { id: 2, ko: "오류 처리는 중요한 부분입니다", vi: "Xử lý lỗi là phần quan trọng", tokens: ["오류", "처리는", "중요한", "부분입니다"] },
+  { id: 0, start: 378, end: 384, ko: "서버리스 아키텍처에 대해 설명하겠습니다", vi: "Tôi sẽ giải thích về kiến trúc Serverless", tokens: ["서버리스", "아키텍처에", "대해", "설명하겠습니다"] },
+  { id: 1, start: 384, end: 390, ko: "배포가 자동으로 처리됩니다", vi: "Việc triển khai được xử lý tự động", tokens: ["배포가", "자동으로", "처리됩니다"] },
+  { id: 2, start: 390, end: 396, ko: "오류 처리는 중요한 부분입니다", vi: "Xử lý lỗi là phần quan trọng", tokens: ["오류", "처리는", "중요한", "부분입니다"] },
 ];
+
+const videoDurationSeconds = 20 * 60;
+const playbackRates = [0.75, 1, 1.25] as const;
+const formatVideoTime = (seconds: number) => `${Math.floor(seconds / 60)}:${Math.floor(seconds % 60).toString().padStart(2, "0")}`;
+const mobileVideoTitle = "DEVIEW 2025 · Serverless Architecture";
 
 const waveHeights = [3, 8, 14, 22, 18, 12, 26, 20, 15, 9, 24, 17, 11, 28, 19, 13, 21, 7, 16, 25, 10, 23, 6, 20, 14];
 
@@ -1158,12 +1163,40 @@ function HonorificsScreen({ nav }: { nav: (s: Screen) => void }) {
 function VideoScreen({ nav }: { nav: (s: Screen) => void }) {
   const [playing, setPlaying] = useState(false);
   const [subIdx, setSubIdx] = useState(1);
+  const [position, setPosition] = useState(videoSubtitles[1].start);
   const [showDict, setShowDict] = useState(false);
   const [selectedWord, setSelectedWord] = useState("배포");
-  const [speed, setSpeed] = useState("1×");
+  const [membyteSavedWords, setMembyteSavedWords] = useState<Set<string>>(new Set());
+  const [speed, setSpeed] = useState<(typeof playbackRates)[number]>(1);
   const [showQuiz, setShowQuiz] = useState(false);
   const [quizSelected, setQuizSelected] = useState<number | null>(null);
-  const sub = videoSubtitles[((subIdx % videoSubtitles.length) + videoSubtitles.length) % videoSubtitles.length];
+  const sub = videoSubtitles[subIdx];
+  const progress = Math.min(100, (position / videoDurationSeconds) * 100);
+  const canGoPrevious = subIdx > 0;
+  const canGoNext = subIdx < videoSubtitles.length - 1;
+  const isSavedToMembyte = membyteSavedWords.has(selectedWord);
+
+  useEffect(() => {
+    if (!playing) return;
+    const timer = window.setInterval(() => setPosition(current => Math.min(videoDurationSeconds, current + (speed / 4))), 250);
+    return () => window.clearInterval(timer);
+  }, [playing, speed]);
+
+  useEffect(() => {
+    if (position >= videoDurationSeconds) setPlaying(false);
+    const activeIndex = videoSubtitles.findIndex(line => position >= line.start && position < line.end);
+    if (activeIndex >= 0 && activeIndex !== subIdx) setSubIdx(activeIndex);
+  }, [position, subIdx]);
+
+  const selectSubtitle = (index: number) => {
+    if (index < 0 || index >= videoSubtitles.length) return;
+    setSubIdx(index);
+    setPosition(videoSubtitles[index].start);
+  };
+
+  const saveToMembyte = () => {
+    setMembyteSavedWords(words => new Set(words).add(selectedWord));
+  };
 
   return (
     <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", position: "relative" }}>
@@ -1174,7 +1207,7 @@ function VideoScreen({ nav }: { nav: (s: Screen) => void }) {
             <div style={{ width: 48, height: 48, borderRadius: "50%", background: `${TEAL}18`, border: `2px solid ${TEAL}44`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 8px" }}>
               <Play size={20} color={TEAL} style={{ marginLeft: 2 }} />
             </div>
-            <p style={{ fontSize: 10, color: "oklch(0.40 0.03 250)", fontFamily: "JetBrains Mono, monospace", margin: 0 }}>DEVIEW 2025 · Serverless Architecture</p>
+            <p style={{ fontSize: 10, color: "oklch(0.40 0.03 250)", fontFamily: "JetBrains Mono, monospace", margin: 0 }}>{mobileVideoTitle}</p>
           </div>
         </div>
         <div style={{ position: "absolute", bottom: 8, left: 0, right: 0, textAlign: "center", padding: "0 12px" }}>
@@ -1192,8 +1225,8 @@ function VideoScreen({ nav }: { nav: (s: Screen) => void }) {
         <button onClick={() => setPlaying(p => !p)} style={{ position: "absolute", inset: 0, background: "none", border: "none", cursor: "pointer" }} />
       </div>
       <div style={{ padding: "10px 14px", borderBottom: "1px solid oklch(0.20 0.03 250)", flexShrink: 0 }}>
-        <div style={{ position: "relative", height: 6, borderRadius: 3, background: "oklch(0.20 0.03 250)", marginBottom: 10, cursor: "pointer" }}>
-          <div style={{ position: "absolute", height: "100%", borderRadius: 3, width: "32%", background: TEAL }} />
+        <div onClick={event => { const bounds = event.currentTarget.getBoundingClientRect(); setPosition(Math.max(0, Math.min(videoDurationSeconds, ((event.clientX - bounds.left) / bounds.width) * videoDurationSeconds))); }} aria-label="Video progress" style={{ position: "relative", height: 6, borderRadius: 3, background: "oklch(0.20 0.03 250)", marginBottom: 10, cursor: "pointer" }}>
+          <div style={{ position: "absolute", height: "100%", borderRadius: 3, width: `${progress}%`, background: TEAL }} />
           {[0.375, 0.6].map((pos, i) => (
             <div key={i} onClick={() => { setShowQuiz(true); setQuizSelected(null); }} style={{ position: "absolute", top: "50%", transform: "translateY(-50%)", left: `${pos * 100}%`, width: 12, height: 12, borderRadius: "50%", background: pos < 0.32 ? "#34d399" : AMBER, border: "2px solid #000", cursor: "pointer", zIndex: 2 }} />
           ))}
@@ -1202,16 +1235,16 @@ function VideoScreen({ nav }: { nav: (s: Screen) => void }) {
           <button onClick={() => setPlaying(p => !p)} style={{ width: 32, height: 32, borderRadius: "50%", background: TEAL, border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
             {playing ? <Pause size={13} color="#000" /> : <Play size={13} color="#000" style={{ marginLeft: 1 }} />}
           </button>
-          <span style={{ fontSize: 10, color: "oklch(0.45 0.03 250)", fontFamily: "JetBrains Mono, monospace", flex: 1 }}>6:24 / 20:00</span>
+          <span aria-live="polite" style={{ fontSize: 10, color: "oklch(0.45 0.03 250)", fontFamily: "JetBrains Mono, monospace", flex: 1 }}>{formatVideoTime(position)} / {formatVideoTime(videoDurationSeconds)}</span>
           <div style={{ display: "flex", gap: 4 }}>
-            {["0.75×", "1×", "1.25×"].map(s => (
-              <button key={s} onClick={() => setSpeed(s)} style={{ padding: "2px 7px", borderRadius: 5, border: "none", cursor: "pointer", fontFamily: "JetBrains Mono, monospace", fontSize: 9, background: speed === s ? TEAL : "oklch(0.20 0.03 250)", color: speed === s ? "#000" : "oklch(0.50 0.03 250)" }}>{s}</button>
+            {playbackRates.map(rate => (
+              <button key={rate} onClick={() => setSpeed(rate)} aria-pressed={speed === rate} aria-label={`Set video speed to ${rate} times`} style={{ padding: "2px 7px", borderRadius: 5, border: "none", cursor: "pointer", fontFamily: "JetBrains Mono, monospace", fontSize: 9, background: speed === rate ? TEAL : "oklch(0.20 0.03 250)", color: speed === rate ? "#000" : "oklch(0.50 0.03 250)" }}>{rate}×</button>
             ))}
           </div>
         </div>
         <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-          <button onClick={() => setSubIdx(i => i - 1)} style={{ flex: 1, padding: "6px 0", borderRadius: 8, background: "oklch(0.18 0.03 250)", border: "none", cursor: "pointer", fontSize: 11, color: "oklch(0.55 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>← Trước</button>
-          <button onClick={() => setSubIdx(i => i + 1)} style={{ flex: 1, padding: "6px 0", borderRadius: 8, background: "oklch(0.18 0.03 250)", border: "none", cursor: "pointer", fontSize: 11, color: "oklch(0.55 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>Tiếp →</button>
+          <button disabled={!canGoPrevious} onClick={() => selectSubtitle(subIdx - 1)} style={{ flex: 1, padding: "6px 0", borderRadius: 8, background: "oklch(0.18 0.03 250)", border: "none", cursor: canGoPrevious ? "pointer" : "not-allowed", opacity: canGoPrevious ? 1 : .45, fontSize: 11, color: "oklch(0.55 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>← Trước</button>
+          <button disabled={!canGoNext} onClick={() => selectSubtitle(subIdx + 1)} style={{ flex: 1, padding: "6px 0", borderRadius: 8, background: "oklch(0.18 0.03 250)", border: "none", cursor: canGoNext ? "pointer" : "not-allowed", opacity: canGoNext ? 1 : .45, fontSize: 11, color: "oklch(0.55 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>Tiếp →</button>
         </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "12px 14px", scrollbarWidth: "none" }}>
@@ -1239,8 +1272,13 @@ function VideoScreen({ nav }: { nav: (s: Screen) => void }) {
             <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 600, fontSize: 17, color: "oklch(0.90 0.01 250)", margin: "0 0 4px" }}>Triển khai (Deploy)</p>
             <p style={{ fontSize: 12, color: "oklch(0.48 0.03 250)", margin: "0 0 5px" }}>Software deployment — pushing code to production</p>
             <p style={{ fontSize: 12, color: "oklch(0.58 0.03 250)", fontStyle: "italic", margin: "0 0 14px" }}>새 버전을 배포했습니다.</p>
-            <button style={{ width: "100%", padding: "11px 0", borderRadius: 12, background: TEAL, border: "none", color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-              <Plus size={16} /> Thêm vào MemByte
+            <div style={{ marginBottom: 10, padding: "9px 11px", borderRadius: 9, background: `${TEAL}0d`, border: `1px solid ${TEAL}30` }}>
+              <p style={{ margin: "0 0 3px", color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 9, letterSpacing: .8 }}>BỘ THẺ MEMBYTE</p>
+              <p style={{ margin: 0, color: "oklch(0.78 0.01 250)", fontFamily: "Outfit, sans-serif", fontWeight: 600, fontSize: 12 }}>{mobileVideoTitle}</p>
+              <p style={{ margin: "3px 0 0", color: "oklch(0.47 0.03 250)", fontSize: 10 }}>Được tạo tự động từ tên video.</p>
+            </div>
+            <button onClick={saveToMembyte} disabled={isSavedToMembyte} style={{ width: "100%", padding: "11px 0", borderRadius: 12, background: isSavedToMembyte ? "#34d399" : TEAL, border: "none", color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 14, cursor: isSavedToMembyte ? "default" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              {isSavedToMembyte ? <><Check size={16} /> Đã thêm vào bộ thẻ</> : <><Plus size={16} /> Thêm vào MemByte</>}
             </button>
           </div>
         </div>
@@ -1539,8 +1577,11 @@ type AdminSection =
   | "analytics" | "analytics-users" | "analytics-content" | "analytics-ai"
   | "settings-prompts" | "settings-admins";
 
-type EditableSubtitle = { id: string; start: string; end: string; ko: string; vi: string; tokens?: unknown[]; tokenCount?: number };
+type SubtitleToken = { surface?: string; stem?: string; pos?: string; pronunciation?: string; meaningVi?: string; meaningEn?: string; definitionEn?: string; exampleKo?: string; grammarNote?: string; clickable?: boolean };
+type EditableSubtitle = { id: string; start: string; end: string; ko: string; vi: string; tokens?: SubtitleToken[]; tokenCount?: number };
 type ParsedSrtLine = { start: number; end: number; text: string };
+
+const subtitleToken = (value: unknown): SubtitleToken => typeof value === "string" ? { surface: value, stem: value } : (value ?? {}) as SubtitleToken;
 
 const youtubeVideoId = (video?: AdminVideoPayload | null) => {
   const source = video?.youtubeVideoId || video?.youtubeUrl || "";
@@ -1573,7 +1614,7 @@ const subtitlePayload = (rows: EditableSubtitle[]) => ({
 });
 
 const koreanSubtitlePayload = (rows: EditableSubtitle[]) => ({
-  koreanSubtitles: rows.map(row => ({ start: Number(row.start), end: Number(row.end), text: row.ko.trim() })),
+  koreanSubtitles: rows.map(row => ({ start: Number(row.start), end: Number(row.end), text: row.ko.trim(), tokens: row.tokens ?? [] })),
 });
 
 const koreanSubtitleValidationError = (rows: EditableSubtitle[]) => {
@@ -1734,7 +1775,9 @@ function AdminPanel({ lang }: { lang: Lang }) {
   const [subtitleEditorError, setSubtitleEditorError] = useState("");
   const [subtitleEditorNotice, setSubtitleEditorNotice] = useState("");
   const [subtitleSaving, setSubtitleSaving] = useState(false);
+  const [subtitleTranslating, setSubtitleTranslating] = useState(false);
   const [subtitleTokenizing, setSubtitleTokenizing] = useState(false);
+  const [selectedTokenSubtitleId, setSelectedTokenSubtitleId] = useState<string | null>(null);
   const [subtitlePreviewTime, setSubtitlePreviewTime] = useState(0);
   const subtitlePreviewMountRef = useRef<HTMLDivElement | null>(null);
   const youtubePlayerRef = useRef<any>(null);
@@ -1783,6 +1826,9 @@ function AdminPanel({ lang }: { lang: Lang }) {
 
   const currentSubtitleError = subtitleValidationError(editSubs);
   const activeSubtitleIndex = editSubs.findIndex(row => subtitlePreviewTime >= Number(row.start) && subtitlePreviewTime < Number(row.end));
+  const selectedTokenSubtitle = editSubs.find(row => row.id === selectedTokenSubtitleId) ?? null;
+  const selectedTokenSubtitleIndex = selectedTokenSubtitle ? editSubs.findIndex(row => row.id === selectedTokenSubtitle.id) : -1;
+  const selectedSubtitleTokens = (selectedTokenSubtitle?.tokens ?? []).map(subtitleToken);
   const previewVideoId = youtubeVideoId(selectedVideo);
 
   const sendPreviewCommand = (func: string, args: unknown[] = []) => {
@@ -1793,6 +1839,15 @@ function AdminPanel({ lang }: { lang: Lang }) {
   const seekPreview = (seconds: number) => {
     setSubtitlePreviewTime(seconds);
     sendPreviewCommand("seekTo", [seconds, true]);
+  };
+
+  const openTokenDetails = (subtitleId: string) => {
+    setSelectedTokenSubtitleId(subtitleId);
+    window.setTimeout(() => {
+      const details = document.getElementById("subtitle-token-details");
+      details?.scrollIntoView({ behavior: "smooth", block: "center" });
+      details?.focus({ preventScroll: true });
+    }, 0);
   };
 
   const importSrt = async (file: File | undefined, language: "ko" | "vi") => {
@@ -3128,7 +3183,7 @@ function AdminPanel({ lang }: { lang: Lang }) {
                           <td style={{ padding: "12px 16px", fontSize: 12, color: subColor, fontFamily: "JetBrains Mono, monospace" }}>{v.subtitles}</td>
                           <td style={{ padding: "12px 16px", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: "oklch(0.55 0.03 250)" }}>{v.quizzes}</td>
                           <td style={{ padding: "12px 16px" }}>
-                            <button onClick={() => { setSelectedVideo(v); setEditSubs((v.koreanSubtitles ?? []).map((line, index) => ({ id: `${v.id}-${index}`, start: String(line.start), end: String(line.end), ko: line.text, vi: v.vietnameseSubtitles?.[index]?.text ?? "", tokens: line.tokens ?? [], tokenCount: line.tokens?.length }))); setSubtitlePreviewTime(0); setSubtitleEditorError(""); setSubtitleEditorNotice(""); setShowSubEditor(true); }} style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Edit Subs</button>
+                            <button onClick={() => { setSelectedVideo(v); setEditSubs((v.koreanSubtitles ?? []).map((line, index) => ({ id: `${v.id}-${index}`, start: String(line.start), end: String(line.end), ko: line.text, vi: v.vietnameseSubtitles?.[index]?.text ?? "", tokens: line.tokens ?? [], tokenCount: line.tokens?.length }))); setSelectedTokenSubtitleId(null); setSubtitlePreviewTime(0); setSubtitleEditorError(""); setSubtitleEditorNotice(""); setShowSubEditor(true); }} style={{ padding: "5px 12px", borderRadius: 7, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Edit Subs</button>
                           </td>
                         </tr>
                       );
@@ -3173,7 +3228,8 @@ function AdminPanel({ lang }: { lang: Lang }) {
                     ))}
                   </div>
                   <p style={{ margin: "-2px 0 0", color: "oklch(0.43 0.03 250)", fontSize: 10, lineHeight: 1.4 }}>Import Korean and Vietnamese files separately. The latest import replaces timings and text for its language.</p>
-                  <button onClick={async () => { if (!selectedVideo?.id) return; const error = koreanSubtitleValidationError(editSubs); if (error) { setSubtitleEditorError(error); return; } try { setSubtitleTokenizing(true); setSubtitleEditorError(""); setSubtitleEditorNotice("Gemini is translating and tokenizing the Korean subtitles…"); const saved = await api.analyzeVideoSubtitlesWithAi(selectedVideo.id, koreanSubtitlePayload(editSubs)); const tokenTotal = saved.koreanSubtitles?.reduce((total, line) => total + (line.tokens?.length ?? 0), 0) ?? 0; setEditSubs(rows => rows.map((row, index) => ({ ...row, vi: saved.vietnameseSubtitles?.[index]?.text ?? row.vi, tokens: saved.koreanSubtitles?.[index]?.tokens ?? [], tokenCount: saved.koreanSubtitles?.[index]?.tokens?.length ?? 0 }))); setSelectedVideo(saved); setVideos(rows => rows.map(row => row.id === saved.id ? saved : row)); setSubtitleEditorNotice(`Gemini translated ${editSubs.length} lines and created ${tokenTotal} Korean tokens. Review, then save.`); } catch (error) { setSubtitleEditorNotice(""); setSubtitleEditorError(error instanceof Error ? error.message : "Gemini could not analyze the Korean subtitles."); } finally { setSubtitleTokenizing(false); } }} disabled={subtitleTokenizing || subtitleSaving || !editSubs.length} style={{ padding: "9px 12px", borderRadius: 8, border: "none", background: TEAL, color: "#001310", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 12, cursor: subtitleTokenizing || !editSubs.length ? "wait" : "pointer", opacity: !editSubs.length ? .55 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Zap size={14} /> {subtitleTokenizing ? "Gemini processing…" : "AI translate & tokenize"}</button>
+                  <button onClick={async () => { if (!selectedVideo?.id) return; const error = koreanSubtitleValidationError(editSubs); if (error) { setSubtitleEditorError(error); return; } try { setSubtitleTranslating(true); setSubtitleEditorError(""); setSubtitleEditorNotice("Gemini is translating the Korean subtitles…"); const saved = await api.translateVideoSubtitlesWithAi(selectedVideo.id, koreanSubtitlePayload(editSubs)); setEditSubs(rows => rows.map((row, index) => ({ ...row, vi: saved.vietnameseSubtitles?.[index]?.text ?? row.vi, tokens: saved.koreanSubtitles?.[index]?.tokens ?? row.tokens ?? [], tokenCount: saved.koreanSubtitles?.[index]?.tokens?.length ?? row.tokenCount }))); setSelectedVideo(saved); setVideos(rows => rows.map(row => row.id === saved.id ? saved : row)); setSubtitleEditorNotice(`Gemini translated ${editSubs.length} line${editSubs.length === 1 ? "" : "s"}. Review, then save.`); } catch (error) { setSubtitleEditorNotice(""); setSubtitleEditorError(error instanceof Error ? error.message : "Gemini could not translate the Korean subtitles."); } finally { setSubtitleTranslating(false); } }} disabled={subtitleTranslating || subtitleTokenizing || subtitleSaving || !editSubs.length} style={{ padding: "9px 12px", borderRadius: 8, border: "none", background: TEAL, color: "#001310", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 12, cursor: subtitleTranslating || !editSubs.length ? "wait" : "pointer", opacity: !editSubs.length ? .55 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Zap size={14} /> {subtitleTranslating ? "Translating…" : "AI translate"}</button>
+                  <button onClick={async () => { if (!selectedVideo?.id) return; const error = koreanSubtitleValidationError(editSubs); if (error) { setSubtitleEditorError(error); return; } try { setSubtitleTokenizing(true); setSubtitleEditorError(""); setSubtitleEditorNotice("Gemini is tokenizing the Korean subtitles and preparing examples…"); const saved = await api.tokenizeVideoSubtitlesWithAi(selectedVideo.id, koreanSubtitlePayload(editSubs)); const tokenTotal = saved.koreanSubtitles?.reduce((total, line) => total + (line.tokens?.length ?? 0), 0) ?? 0; setEditSubs(rows => rows.map((row, index) => ({ ...row, tokens: saved.koreanSubtitles?.[index]?.tokens ?? [], tokenCount: saved.koreanSubtitles?.[index]?.tokens?.length ?? 0 }))); setSelectedTokenSubtitleId(current => current ?? editSubs[0]?.id ?? null); setSelectedVideo(saved); setVideos(rows => rows.map(row => row.id === saved.id ? saved : row)); setSubtitleEditorNotice(`Created ${tokenTotal} detailed Korean token${tokenTotal === 1 ? "" : "s"}. Click a Korean sentence to inspect meanings and examples.`); } catch (error) { setSubtitleEditorNotice(""); setSubtitleEditorError(error instanceof Error ? error.message : "Unable to tokenize the Korean subtitles."); } finally { setSubtitleTokenizing(false); } }} disabled={subtitleTranslating || subtitleTokenizing || subtitleSaving || !editSubs.length} style={{ padding: "9px 12px", borderRadius: 8, border: `1px solid ${TEAL}55`, background: `${TEAL}10`, color: TEAL, fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 12, cursor: subtitleTokenizing || !editSubs.length ? "wait" : "pointer", opacity: !editSubs.length ? .55 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}><Zap size={14} /> {subtitleTokenizing ? "Tokenizing…" : "AI tokenize Korean"}</button>
                 </div>
               </div>
               <div style={{ borderRadius: 14, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.20 0.03 250)", overflow: "hidden" }}>
@@ -3183,15 +3239,31 @@ function AdminPanel({ lang }: { lang: Lang }) {
                 {editSubs.map((row, index) => {
                   const active = index === activeSubtitleIndex;
                   const update = (field: keyof EditableSubtitle, value: string) => setEditSubs(rows => rows.map(item => item.id === row.id ? { ...item, [field]: value } : item));
-                  return <div key={row.id} onClick={() => seekPreview(Number(row.start) || 0)} style={{ padding: "10px 16px", borderBottom: "1px solid oklch(0.14 0.025 250)", display: "grid", gridTemplateColumns: "130px 1fr 1fr 28px", gap: 8, alignItems: "start", background: active ? `${TEAL}0d` : "transparent", cursor: "pointer" }}>
+                  return <div key={row.id} onClick={() => { setSelectedTokenSubtitleId(row.id); seekPreview(Number(row.start) || 0); }} style={{ padding: "10px 16px", borderBottom: "1px solid oklch(0.14 0.025 250)", display: "grid", gridTemplateColumns: "130px 1fr 1fr 28px", gap: 8, alignItems: "start", background: selectedTokenSubtitleId === row.id ? `${TEAL}12` : active ? `${TEAL}0d` : "transparent", cursor: "pointer" }}>
                     <div style={{ display: "flex", gap: 5 }} onClick={event => event.stopPropagation()}><input aria-label={`Line ${index + 1} start time`} value={row.start} inputMode="decimal" onChange={event => update("start", event.target.value)} style={{ minWidth: 0, width: "100%", padding: "6px", borderRadius: 6, background: "oklch(0.10 0.02 250)", border: `1px solid ${active ? TEAL : "oklch(0.20 0.03 250)"}`, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11 }} /><input aria-label={`Line ${index + 1} end time`} value={row.end} inputMode="decimal" onChange={event => update("end", event.target.value)} style={{ minWidth: 0, width: "100%", padding: "6px", borderRadius: 6, background: "oklch(0.10 0.02 250)", border: `1px solid ${active ? TEAL : "oklch(0.20 0.03 250)"}`, color: "oklch(0.62 0.03 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 11 }} /></div>
-                    <div><textarea aria-label={`Line ${index + 1} Korean`} value={row.ko} onClick={event => event.stopPropagation()} onChange={event => update("ko", event.target.value)} rows={2} style={{ width: "100%", borderRadius: 6, padding: "6px 8px", background: "oklch(0.10 0.02 250)", border: `1px solid ${active ? TEAL : "oklch(0.20 0.03 250)"}`, color: "oklch(0.82 0.01 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 11, outline: "none", resize: "vertical", boxSizing: "border-box" }} />{row.tokenCount !== undefined && <p style={{ margin: "4px 2px 0", color: TEAL, fontSize: 10, fontFamily: "JetBrains Mono, monospace" }}>✓ {row.tokenCount} token{row.tokenCount === 1 ? "" : "s"}</p>}</div>
+                    <div><textarea aria-label={`Line ${index + 1} Korean`} value={row.ko} onClick={event => { event.stopPropagation(); setSelectedTokenSubtitleId(row.id); }} onFocus={() => setSelectedTokenSubtitleId(row.id)} onChange={event => update("ko", event.target.value)} rows={2} style={{ width: "100%", borderRadius: 6, padding: "6px 8px", background: "oklch(0.10 0.02 250)", border: `1px solid ${selectedTokenSubtitleId === row.id || active ? TEAL : "oklch(0.20 0.03 250)"}`, color: "oklch(0.82 0.01 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 11, outline: "none", resize: "vertical", boxSizing: "border-box" }} />{row.tokenCount !== undefined && <button type="button" onClick={event => { event.stopPropagation(); openTokenDetails(row.id); }} aria-label={`View tokens for line ${index + 1}`} style={{ margin: "4px 2px 0", padding: 0, border: "none", background: "none", color: TEAL, fontSize: 10, fontFamily: "JetBrains Mono, monospace", cursor: "pointer", textAlign: "left" }}>✓ {row.tokenCount} token{row.tokenCount === 1 ? "" : "s"} · View details</button>}</div>
                     <textarea aria-label={`Line ${index + 1} Vietnamese`} value={row.vi} onClick={event => event.stopPropagation()} onChange={event => update("vi", event.target.value)} rows={2} style={{ width: "100%", borderRadius: 6, padding: "6px 8px", background: "oklch(0.10 0.02 250)", border: `1px solid ${active ? TEAL : "oklch(0.20 0.03 250)"}`, color: "oklch(0.75 0.01 250)", fontFamily: "Inter, sans-serif", fontSize: 11, outline: "none", resize: "vertical", boxSizing: "border-box" }} />
                     <button onClick={event => { event.stopPropagation(); setEditSubs(rows => rows.filter(item => item.id !== row.id)); }} aria-label={`Delete subtitle line ${index + 1}`} style={{ width: 28, height: 28, borderRadius: 6, border: "1px solid #f8717140", background: "#f8717110", color: "#f87171", cursor: "pointer", display: "grid", placeItems: "center" }}><X size={14} /></button>
                   </div>;
                 })}
                 {!editSubs.length && <p style={{ padding: "36px 18px", margin: 0, textAlign: "center", color: "oklch(0.45 0.03 250)", fontSize: 12 }}>No subtitles yet. Add the first line from the preview panel.</p>}
-                <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}><span style={{ fontSize: 11, color: "oklch(0.45 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>{editSubs.length} line{editSubs.length === 1 ? "" : "s"}</span><button onClick={async () => { if (!selectedVideo?.id) return; const sorted = [...editSubs].sort((a, b) => Number(a.start) - Number(b.start)); const error = subtitleValidationError(sorted); if (error) { setSubtitleEditorError(error); return; } try { setSubtitleSaving(true); setSubtitleEditorError(""); const saved = await api.updateVideoSubtitles(selectedVideo.id, subtitlePayload(sorted)); setEditSubs(sorted); setSelectedVideo(saved); setVideos(rows => rows.map(row => row.id === saved.id ? saved : row)); setSubtitleEditorNotice("Subtitle changes saved."); } catch (error) { setSubtitleEditorError(error instanceof Error ? error.message : "Unable to save subtitles."); } finally { setSubtitleSaving(false); } }} disabled={subtitleSaving || subtitleTokenizing || Boolean(currentSubtitleError)} style={{ padding: "9px 20px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: subtitleSaving ? "wait" : "pointer", opacity: currentSubtitleError ? .55 : 1 }}>{subtitleSaving ? "Saving…" : "Save changes"}</button></div>
+                {selectedTokenSubtitle && <section id="subtitle-token-details" tabIndex={-1} aria-live="polite" style={{ padding: "16px", borderTop: `1px solid ${TEAL}35`, background: "oklch(0.11 0.025 250)", outline: "none" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start", marginBottom: 12 }}>
+                    <div><p style={{ margin: 0, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 10, letterSpacing: 1 }}>TOKEN DETAILS · LINE {selectedTokenSubtitleIndex + 1}</p><p style={{ margin: "5px 0 0", color: "oklch(0.86 0.01 250)", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 15 }}>{selectedTokenSubtitle.ko}</p></div>
+                    <button type="button" onClick={() => setSelectedTokenSubtitleId(null)} aria-label="Close token details" style={{ width: 28, height: 28, borderRadius: 7, border: "1px solid oklch(0.25 0.03 250)", background: "none", color: "oklch(0.62 0.03 250)", cursor: "pointer" }}><X size={14} /></button>
+                  </div>
+                  {selectedSubtitleTokens.length ? <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10 }}>
+                    {selectedSubtitleTokens.map((token, tokenIndex) => <article key={`${token.surface}-${tokenIndex}`} style={{ padding: 12, borderRadius: 10, background: "oklch(0.14 0.025 250)", border: "1px solid oklch(0.22 0.03 250)" }}>
+                      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 8, marginBottom: 8 }}><strong style={{ color: TEAL, fontFamily: "Outfit, sans-serif", fontSize: 18 }}>{token.surface || "—"}</strong><span style={{ color: "oklch(0.52 0.03 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 10 }}>{token.pos || "—"}</span></div>
+                      <p style={{ margin: "0 0 4px", color: "oklch(0.76 0.01 250)", fontSize: 12 }}><span style={{ color: "oklch(0.47 0.03 250)" }}>Nghĩa: </span>{token.meaningVi || "Chưa có nghĩa"}{token.meaningEn ? ` · ${token.meaningEn}` : ""}</p>
+                      {(token.stem || token.pronunciation) && <p style={{ margin: "0 0 8px", color: "oklch(0.56 0.03 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 10 }}>{token.stem || token.surface}{token.pronunciation ? ` · ${token.pronunciation}` : ""}</p>}
+                      {token.definitionEn && <p style={{ margin: "0 0 8px", color: "oklch(0.62 0.02 250)", fontSize: 11, lineHeight: 1.45 }}>{token.definitionEn}</p>}
+                      <div style={{ padding: "8px 9px", borderRadius: 7, background: `${TEAL}0d`, border: `1px solid ${TEAL}28` }}><p style={{ margin: "0 0 3px", color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 9, letterSpacing: .8 }}>VÍ DỤ</p><p style={{ margin: 0, color: "oklch(0.82 0.01 250)", fontSize: 12, lineHeight: 1.45 }}>{token.exampleKo || "Chưa có ví dụ cho token này."}</p></div>
+                      {token.grammarNote && <p style={{ margin: "8px 0 0", color: AMBER, fontSize: 11, lineHeight: 1.4 }}>{token.grammarNote}</p>}
+                    </article>)}
+                  </div> : <p style={{ margin: 0, color: "oklch(0.53 0.03 250)", fontSize: 12 }}>Câu này chưa có token. Chạy “AI tokenize Korean” để lấy chi tiết và ví dụ.</p>}
+                </section>}
+                <div style={{ padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}><span style={{ fontSize: 11, color: "oklch(0.45 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>{editSubs.length} line{editSubs.length === 1 ? "" : "s"}</span><button onClick={async () => { if (!selectedVideo?.id) return; const sorted = [...editSubs].sort((a, b) => Number(a.start) - Number(b.start)); const error = subtitleValidationError(sorted); if (error) { setSubtitleEditorError(error); return; } try { setSubtitleSaving(true); setSubtitleEditorError(""); const saved = await api.updateVideoSubtitles(selectedVideo.id, subtitlePayload(sorted)); setEditSubs(sorted); setSelectedVideo(saved); setVideos(rows => rows.map(row => row.id === saved.id ? saved : row)); setSubtitleEditorNotice("Subtitle changes saved."); } catch (error) { setSubtitleEditorError(error instanceof Error ? error.message : "Unable to save subtitles."); } finally { setSubtitleSaving(false); } }} disabled={subtitleSaving || subtitleTranslating || subtitleTokenizing || Boolean(currentSubtitleError)} style={{ padding: "9px 20px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: subtitleSaving ? "wait" : "pointer", opacity: currentSubtitleError ? .55 : 1 }}>{subtitleSaving ? "Saving…" : "Save changes"}</button></div>
               </div>
             </div>
           </div>

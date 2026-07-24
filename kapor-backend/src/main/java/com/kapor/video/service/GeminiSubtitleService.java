@@ -39,13 +39,52 @@ public class GeminiSubtitleService {
         if (apiKey == null || apiKey.isBlank() || apiKey.startsWith("your-")) {
             throw new GeminiApiException(HttpStatus.BAD_GATEWAY, "Gemini is not configured. Set GEMINI_API_KEY on the backend and restart it.");
         }
+        JsonNode response = generate(requestBody(subtitles));
+        try {
+            return parseResponse(response, subtitles.size());
+        } catch (GeminiApiException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new GeminiApiException(HttpStatus.BAD_GATEWAY, "Gemini returned an unusable subtitle analysis. Please retry.", exception);
+        }
+    }
+
+    public List<TranslationLine> translate(List<Video.SubtitleLine> subtitles) {
+        if (apiKey == null || apiKey.isBlank() || apiKey.startsWith("your-")) {
+            throw new GeminiApiException(HttpStatus.BAD_GATEWAY, "Gemini is not configured. Set GEMINI_API_KEY on the backend and restart it.");
+        }
+        JsonNode response = generate(translationRequestBody(subtitles));
+        try {
+            return parseTranslationResponse(response, subtitles.size());
+        } catch (GeminiApiException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new GeminiApiException(HttpStatus.BAD_GATEWAY, "Gemini returned unusable subtitle translations. Please retry.", exception);
+        }
+    }
+
+    public List<TokenizationLine> tokenize(List<Video.SubtitleLine> subtitles) {
+        if (apiKey == null || apiKey.isBlank() || apiKey.startsWith("your-")) {
+            throw new GeminiApiException(HttpStatus.BAD_GATEWAY, "Gemini is not configured. Set GEMINI_API_KEY on the backend and restart it.");
+        }
+        JsonNode response = generate(tokenizationRequestBody(subtitles));
+        try {
+            return parseTokenizationResponse(response, subtitles.size());
+        } catch (GeminiApiException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new GeminiApiException(HttpStatus.BAD_GATEWAY, "Gemini returned unusable Korean tokens. Please retry.", exception);
+        }
+    }
+
+    private JsonNode generate(JsonNode requestBody) {
         JsonNode response;
         try {
             response = webClientBuilder.build().post()
                     .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", modelName)
                     .header("x-goog-api-key", apiKey)
                     .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(requestBody(subtitles))
+                    .bodyValue(requestBody)
                     .retrieve()
                     .onStatus(HttpStatusCode::isError, clientResponse -> clientResponse.bodyToMono(JsonNode.class)
                             .defaultIfEmpty(objectMapper.createObjectNode())
@@ -57,13 +96,7 @@ public class GeminiSubtitleService {
         } catch (RuntimeException exception) {
             throw new GeminiApiException(HttpStatus.BAD_GATEWAY, "Unable to reach Gemini. Check the backend network connection and retry.", exception);
         }
-        try {
-            return parseResponse(response, subtitles.size());
-        } catch (GeminiApiException exception) {
-            throw exception;
-        } catch (RuntimeException exception) {
-            throw new GeminiApiException(HttpStatus.BAD_GATEWAY, "Gemini returned an unusable subtitle analysis. Please retry.", exception);
-        }
+        return response;
     }
 
     private ObjectNode requestBody(List<Video.SubtitleLine> subtitles) {
@@ -99,6 +132,66 @@ public class GeminiSubtitleService {
         }
     }
 
+    private ObjectNode translationRequestBody(List<Video.SubtitleLine> subtitles) {
+        ObjectNode root = objectMapper.createObjectNode();
+        ArrayNode contents = root.putArray("contents");
+        ArrayNode parts = contents.addObject().putArray("parts");
+        parts.addObject().put("text", translationPrompt(subtitles));
+        ObjectNode generationConfig = root.putObject("generationConfig");
+        generationConfig.put("temperature", 0.2);
+        generationConfig.put("responseMimeType", "application/json");
+        generationConfig.set("responseJsonSchema", translationResponseSchema());
+        return root;
+    }
+
+    private String translationPrompt(List<Video.SubtitleLine> subtitles) {
+        ArrayNode input = objectMapper.createArrayNode();
+        for (int index = 0; index < subtitles.size(); index++) {
+            input.addObject().put("index", index).put("korean", subtitles.get(index).getText());
+        }
+        try {
+            return """
+                    You are a Korean language educator translating Korean video subtitles into natural Vietnamese.
+                    For every input line, return exactly one result with the same index.
+                    Translate the full sentence naturally, retaining technical terminology when relevant.
+                    Do not tokenize, analyze grammar, add notes, add Markdown, or omit a line.
+                    Input lines:
+                    """ + objectMapper.writeValueAsString(input);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to prepare Gemini subtitle translation request", exception);
+        }
+    }
+
+    private ObjectNode tokenizationRequestBody(List<Video.SubtitleLine> subtitles) {
+        ObjectNode root = objectMapper.createObjectNode();
+        ArrayNode contents = root.putArray("contents");
+        ArrayNode parts = contents.addObject().putArray("parts");
+        parts.addObject().put("text", tokenizationPrompt(subtitles));
+        ObjectNode generationConfig = root.putObject("generationConfig");
+        generationConfig.put("temperature", 0.2);
+        generationConfig.put("responseMimeType", "application/json");
+        generationConfig.set("responseJsonSchema", tokenizationResponseSchema());
+        return root;
+    }
+
+    private String tokenizationPrompt(List<Video.SubtitleLine> subtitles) {
+        ArrayNode input = objectMapper.createArrayNode();
+        for (int index = 0; index < subtitles.size(); index++) {
+            input.addObject().put("index", index).put("korean", subtitles.get(index).getText());
+        }
+        try {
+            return """
+                    You are a Korean language educator preparing Korean video subtitles for learners.
+                    For every input line, return exactly one result with the same index.
+                    Tokenize Korean into useful learner-facing words or grammatical units. Each token surface must be an exact substring of the Korean input. Use the dictionary form for lemma, a concise POS tag, Revised Romanization pronunciation, a Vietnamese meaning, a short English meaning, a plain-English learner definition, and one natural Korean example sentence using the lemma. Add a grammar note only when it teaches a particle, ending, connective, or construction.
+                    Do not translate the input sentence, add Markdown, or omit a line.
+                    Input lines:
+                    """ + objectMapper.writeValueAsString(input);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to prepare Gemini tokenization request", exception);
+        }
+    }
+
     private JsonNode responseSchema() {
         try {
             return objectMapper.readTree("""
@@ -126,6 +219,53 @@ public class GeminiSubtitleService {
                     """);
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Unable to prepare Gemini response schema", exception);
+        }
+    }
+
+    private JsonNode translationResponseSchema() {
+        try {
+            return objectMapper.readTree("""
+                    {
+                      "type":"object",
+                      "properties":{
+                        "lines":{"type":"array","items":{"type":"object","properties":{
+                          "index":{"type":"integer"},
+                          "vietnamese":{"type":"string"}
+                        },"required":["index","vietnamese"]}}
+                      },"required":["lines"]
+                    }
+                    """);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to prepare Gemini translation response schema", exception);
+        }
+    }
+
+    private JsonNode tokenizationResponseSchema() {
+        try {
+            return objectMapper.readTree("""
+                    {
+                      "type":"object",
+                      "properties":{
+                        "lines":{"type":"array","items":{"type":"object","properties":{
+                          "index":{"type":"integer"},
+                          "tokens":{"type":"array","items":{"type":"object","properties":{
+                            "surface":{"type":"string"},
+                            "lemma":{"type":"string"},
+                            "pos":{"type":"string"},
+                            "pronunciation":{"type":"string"},
+                            "meaningVi":{"type":"string"},
+                            "meaningEn":{"type":"string"},
+                            "definitionEn":{"type":"string"},
+                            "exampleKo":{"type":"string"},
+                            "grammarNote":{"type":["string","null"]},
+                            "clickable":{"type":"boolean"}
+                          },"required":["surface","lemma","pos","pronunciation","meaningVi","meaningEn","definitionEn","exampleKo","grammarNote","clickable"]}}
+                        },"required":["index","tokens"]}}
+                      },"required":["lines"]
+                    }
+                    """);
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Unable to prepare Gemini tokenization response schema", exception);
         }
     }
 
@@ -174,6 +314,83 @@ public class GeminiSubtitleService {
         }
     }
 
+    private List<TranslationLine> parseTranslationResponse(JsonNode response, int expectedLines) {
+        if (response == null) throw new IllegalStateException("Gemini returned an empty response");
+        JsonNode text = response.path("candidates").path(0).path("content").path("parts").path(0).path("text");
+        if (!text.isTextual()) throw new IllegalStateException("Gemini did not return subtitle translations");
+        try {
+            JsonNode lines = objectMapper.readTree(text.asText()).path("lines");
+            if (!lines.isArray() || lines.size() != expectedLines) {
+                throw new IllegalStateException("Gemini returned incomplete subtitle translations");
+            }
+            List<TranslationLine> result = new ArrayList<>();
+            for (JsonNode line : lines) {
+                int index = line.path("index").asInt(-1);
+                String vietnamese = line.path("vietnamese").asText("").trim();
+                if (index < 0 || index >= expectedLines || vietnamese.isBlank()) {
+                    throw new IllegalStateException("Gemini returned an invalid subtitle translation");
+                }
+                result.add(new TranslationLine(index, vietnamese));
+            }
+            result.sort(Comparator.comparingInt(TranslationLine::index));
+            for (int index = 0; index < result.size(); index++) {
+                if (result.get(index).index() != index) throw new IllegalStateException("Gemini returned duplicate subtitle indexes");
+            }
+            return result;
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Gemini returned invalid translation JSON", exception);
+        }
+    }
+
+    private List<TokenizationLine> parseTokenizationResponse(JsonNode response, int expectedLines) {
+        if (response == null) throw new IllegalStateException("Gemini returned an empty response");
+        JsonNode text = response.path("candidates").path(0).path("content").path("parts").path(0).path("text");
+        if (!text.isTextual()) throw new IllegalStateException("Gemini did not return Korean tokens");
+        try {
+            JsonNode lines = objectMapper.readTree(text.asText()).path("lines");
+            if (!lines.isArray() || lines.size() != expectedLines) {
+                throw new IllegalStateException("Gemini returned incomplete Korean tokens");
+            }
+            List<TokenizationLine> result = new ArrayList<>();
+            for (JsonNode line : lines) {
+                int index = line.path("index").asInt(-1);
+                if (index < 0 || index >= expectedLines || !line.path("tokens").isArray()) {
+                    throw new IllegalStateException("Gemini returned an invalid Korean token line");
+                }
+                List<Video.TokenizedWord> tokens = parseTokens(line.path("tokens"));
+                result.add(new TokenizationLine(index, tokens));
+            }
+            result.sort(Comparator.comparingInt(TokenizationLine::index));
+            for (int index = 0; index < result.size(); index++) {
+                if (result.get(index).index() != index) throw new IllegalStateException("Gemini returned duplicate subtitle indexes");
+            }
+            return result;
+        } catch (JsonProcessingException exception) {
+            throw new IllegalStateException("Gemini returned invalid tokenization JSON", exception);
+        }
+    }
+
+    private List<Video.TokenizedWord> parseTokens(JsonNode tokensNode) {
+        List<Video.TokenizedWord> tokens = new ArrayList<>();
+        for (JsonNode token : tokensNode) {
+            String surface = token.path("surface").asText("").trim();
+            if (surface.isBlank()) continue;
+            tokens.add(Video.TokenizedWord.builder()
+                    .surface(surface)
+                    .stem(token.path("lemma").asText(surface).trim())
+                    .pos(token.path("pos").asText("unknown").trim())
+                    .pronunciation(token.path("pronunciation").asText("").trim())
+                    .meaningVi(token.path("meaningVi").asText("").trim())
+                    .meaningEn(token.path("meaningEn").asText("").trim())
+                    .definitionEn(token.path("definitionEn").asText("").trim())
+                    .exampleKo(token.path("exampleKo").asText("").trim())
+                    .grammarNote(token.path("grammarNote").isNull() ? null : token.path("grammarNote").asText("").trim())
+                    .clickable(token.path("clickable").asBoolean(true))
+                    .build());
+        }
+        return tokens;
+    }
+
     private GeminiApiException geminiError(HttpStatusCode status, JsonNode body) {
         if (status.value() == 401 || status.value() == 403) {
             return new GeminiApiException(HttpStatus.BAD_GATEWAY, "Gemini rejected the API key. Check GEMINI_API_KEY and its API restrictions.");
@@ -190,4 +407,6 @@ public class GeminiSubtitleService {
     }
 
     public record AnalysisLine(int index, String vietnamese, List<Video.TokenizedWord> tokens) { }
+    public record TranslationLine(int index, String vietnamese) { }
+    public record TokenizationLine(int index, List<Video.TokenizedWord> tokens) { }
 }

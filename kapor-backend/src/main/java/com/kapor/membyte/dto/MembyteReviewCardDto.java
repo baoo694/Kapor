@@ -14,6 +14,9 @@ public class MembyteReviewCardDto {
     String pronunciation;
     String vietnamese;
     String english;
+    String definitionEn;
+    String exampleKo;
+    String grammarNote;
     String context;
     String codeSnippet;
     String audioUrl;

@@ -22,6 +22,8 @@ class _VideoScreenState extends State<VideoScreen> {
   StreamSubscription<YoutubeVideoState>? _positionSubscription;
   StreamSubscription<YoutubePlayerValue>? _playerValueSubscription;
   double _position = 0;
+  double _durationSeconds = 0;
+  double _playbackRate = 1;
   final Set<String> _completedQuizzes = {};
   String? _error;
 
@@ -73,11 +75,20 @@ class _VideoScreenState extends State<VideoScreen> {
       if (mounted && value.hasError) {
         setState(() => _error = 'YouTube player error: ${value.error}');
       }
+      final duration = value.metaData.duration.inMilliseconds / 1000;
+      if (mounted && duration > 0 && duration != _durationSeconds) {
+        setState(() => _durationSeconds = duration);
+      }
+      if (mounted && value.playbackRate != _playbackRate) {
+        setState(() => _playbackRate = value.playbackRate);
+      }
     });
     setState(() {
       _video = video;
       _player = player;
       _position = 0;
+      _durationSeconds = video.durationSeconds.toDouble();
+      _playbackRate = 1;
       _error = null;
     });
   }
@@ -156,6 +167,13 @@ class _VideoScreenState extends State<VideoScreen> {
     final video = _video!;
     final korean = _active(video.koreanSubtitles);
     final vietnamese = _active(video.vietnameseSubtitles);
+    final subtitleIndex = _subtitleIndexAt(video.koreanSubtitles);
+    final canGoPrevious = subtitleIndex > 0;
+    final canGoNext =
+        subtitleIndex >= 0 && subtitleIndex < video.koreanSubtitles.length - 1;
+    final duration = _durationSeconds > 0
+        ? _durationSeconds
+        : video.durationSeconds.toDouble();
     _maybeOpenQuiz(video);
     return ListView(
       padding: const EdgeInsets.only(bottom: 24),
@@ -175,6 +193,14 @@ class _VideoScreenState extends State<VideoScreen> {
                   fontSize: 13,
                   color: AppTheme.textSecondary,
                 ),
+              ),
+              const SizedBox(height: 14),
+              _videoControls(
+                duration: duration,
+                subtitleIndex: subtitleIndex,
+                canGoPrevious: canGoPrevious,
+                canGoNext: canGoNext,
+                subtitles: video.koreanSubtitles,
               ),
               const SizedBox(height: 16),
               _subtitleCard(korean, vietnamese),
@@ -247,6 +273,102 @@ class _VideoScreenState extends State<VideoScreen> {
     return null;
   }
 
+  int _subtitleIndexAt(List<VideoSubtitle> subtitles) {
+    if (subtitles.isEmpty) return -1;
+    for (var index = 0; index < subtitles.length; index++) {
+      final subtitle = subtitles[index];
+      if (_position >= subtitle.start && _position < subtitle.end) return index;
+    }
+    if (_position < subtitles.first.start) return 0;
+    return subtitles.length - 1;
+  }
+
+  Future<void> _seekTo(double seconds) async {
+    final duration = _durationSeconds;
+    final target = duration > 0
+        ? seconds.clamp(0, duration).toDouble()
+        : seconds;
+    setState(() => _position = target);
+    await _player?.seekTo(seconds: target, allowSeekAhead: true);
+  }
+
+  Future<void> _setPlaybackRate(double rate) async {
+    setState(() => _playbackRate = rate);
+    await _player?.setPlaybackRate(rate);
+  }
+
+  Widget _videoControls({
+    required double duration,
+    required int subtitleIndex,
+    required bool canGoPrevious,
+    required bool canGoNext,
+    required List<VideoSubtitle> subtitles,
+  }) => Column(
+    children: [
+      Slider(
+        value: (duration > 0 ? _position.clamp(0, duration) : 0).toDouble(),
+        min: 0,
+        max: duration > 0 ? duration : 1,
+        onChanged: duration > 0 ? (value) => _seekTo(value) : null,
+        semanticFormatterCallback: _formatVideoTime,
+      ),
+      Row(
+        children: [
+          Text(
+            '${_formatVideoTime(_position)} / ${_formatVideoTime(duration)}',
+            style: GoogleFonts.jetBrainsMono(
+              fontSize: 12,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          const Spacer(),
+          ...[.75, 1.0, 1.25].map(
+            (rate) => Padding(
+              padding: const EdgeInsets.only(left: 5),
+              child: ChoiceChip(
+                label: Text(rate == 1 ? '1×' : '$rate×'),
+                selected: _playbackRate == rate,
+                onSelected: (_) => _setPlaybackRate(rate),
+              ),
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 10),
+      Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: canGoPrevious
+                  ? () => _seekTo(subtitles[subtitleIndex - 1].start)
+                  : null,
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Trước'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: FilledButton.icon(
+              onPressed: canGoNext
+                  ? () => _seekTo(subtitles[subtitleIndex + 1].start)
+                  : null,
+              icon: const Icon(Icons.arrow_forward),
+              label: const Text('Tiếp'),
+            ),
+          ),
+        ],
+      ),
+    ],
+  );
+
+  String _formatVideoTime(double seconds) {
+    final totalSeconds =
+        (seconds.isFinite ? seconds.floor().clamp(0, 359999) : 0).toInt();
+    final minutes = totalSeconds ~/ 60;
+    final remainingSeconds = totalSeconds % 60;
+    return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
+  }
+
   Widget _subtitleCard(VideoSubtitle? korean, VideoSubtitle? vietnamese) =>
       Container(
         width: double.infinity,
@@ -277,11 +399,17 @@ class _VideoScreenState extends State<VideoScreen> {
       );
   void _showWord(VideoToken token) {
     _player?.pauseVideo();
+    final video = _video;
+    if (video == null) return;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => _WordDetailSheet(token: token),
+      builder: (context) => _WordDetailSheet(
+        token: token,
+        deckTitle: video.title,
+        onSave: () => _service.saveVideoToken(video.id, token.surface),
+      ),
     );
   }
 
@@ -359,16 +487,65 @@ class _VideoScreenState extends State<VideoScreen> {
   );
 }
 
-class _WordDetailSheet extends StatelessWidget {
-  const _WordDetailSheet({required this.token});
+class _WordDetailSheet extends StatefulWidget {
+  const _WordDetailSheet({
+    required this.token,
+    required this.deckTitle,
+    required this.onSave,
+  });
 
   final VideoToken token;
+  final String deckTitle;
+  final Future<bool> Function() onSave;
+
+  @override
+  State<_WordDetailSheet> createState() => _WordDetailSheetState();
+}
+
+class _WordDetailSheetState extends State<_WordDetailSheet> {
+  bool _saving = false;
+  bool _saved = false;
 
   String _value(String value, String fallback) =>
       value.trim().isEmpty ? fallback : value.trim();
 
+  Future<void> _saveToMembyte() async {
+    if (_saving || _saved) return;
+    setState(() => _saving = true);
+    try {
+      final alreadySaved = await widget.onSave();
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _saving = false;
+        _saved = true;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            alreadySaved
+                ? 'Từ này đã có trong bộ thẻ MemByte.'
+                : 'Đã thêm vào bộ thẻ MemByte.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final token = widget.token;
     final pronunciation = _value(token.pronunciation, 'Chưa có phiên âm');
     final vi = _value(token.meaningVi, 'Chưa có nghĩa tiếng Việt');
     final en = _value(token.meaningEn, 'English meaning unavailable');
@@ -455,6 +632,47 @@ class _WordDetailSheet extends StatelessWidget {
                 example,
                 AppTheme.textPrimary,
                 italic: true,
+              ),
+              const SizedBox(height: 22),
+              Text(
+                'BỘ THẺ MEMBYTE',
+                style: GoogleFonts.jetBrainsMono(
+                  color: AppTheme.primary,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: .8,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                widget.deckTitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: GoogleFonts.inter(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _saving || _saved ? null : _saveToMembyte,
+                  icon: _saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(_saved ? Icons.check : Icons.add),
+                  label: Text(
+                    _saving
+                        ? 'Đang thêm...'
+                        : _saved
+                        ? 'Đã thêm vào MemByte'
+                        : 'Thêm vào MemByte',
+                  ),
+                ),
               ),
             ],
           ),

@@ -205,7 +205,7 @@ class _MemByteReviewScreenState extends State<MemByteReviewScreen>
                             alignment: Alignment.center,
                             child: SizedBox(
                               width: double.infinity,
-                              height: 280,
+                              height: 360,
                               child: isFront
                                   ? _buildFront(card)
                                   : Transform(
@@ -337,6 +337,8 @@ class _MemByteReviewScreenState extends State<MemByteReviewScreen>
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _detailLabel('NGHĨA'),
+            const SizedBox(height: 6),
             Text(
               meaning,
               style: GoogleFonts.outfit(
@@ -345,34 +347,43 @@ class _MemByteReviewScreenState extends State<MemByteReviewScreen>
                 color: AppTheme.textPrimary,
               ),
             ),
-            if (card.context.isNotEmpty) ...[
-              const SizedBox(height: 8),
+            if (card.definitionEn.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              _detailLabel('ENGLISH DEFINITION'),
+              const SizedBox(height: 6),
               Text(
-                card.context,
+                card.definitionEn,
                 style: GoogleFonts.inter(
-                  fontSize: 12,
+                  fontSize: 15,
+                  height: 1.35,
                   color: AppTheme.textSecondary,
                 ),
               ),
             ],
-            if (card.codeSnippet.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: AppTheme.surface.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: AppTheme.textSecondary.withValues(alpha: 0.2),
-                  ),
+            if (card.exampleKo.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              _detailLabel('VÍ DỤ TIẾNG HÀN'),
+              const SizedBox(height: 6),
+              Text(
+                card.exampleKo,
+                style: GoogleFonts.inter(
+                  fontSize: 16,
+                  height: 1.35,
+                  fontStyle: FontStyle.italic,
+                  color: AppTheme.textPrimary,
                 ),
-                child: Text(
-                  card.codeSnippet,
-                  style: GoogleFonts.jetBrainsMono(
-                    fontSize: 10,
-                    color: AppTheme.primary,
-                  ),
+              ),
+            ],
+            if (card.grammarNote.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              _detailLabel('GHI CHÚ NGỮ PHÁP'),
+              const SizedBox(height: 6),
+              Text(
+                card.grammarNote,
+                style: GoogleFonts.inter(
+                  fontSize: 14,
+                  height: 1.35,
+                  color: AppTheme.textSecondary,
                 ),
               ),
             ],
@@ -381,6 +392,16 @@ class _MemByteReviewScreenState extends State<MemByteReviewScreen>
       ),
     );
   }
+
+  Widget _detailLabel(String label) => Text(
+    label,
+    style: GoogleFonts.jetBrainsMono(
+      color: AppTheme.primary,
+      fontSize: 10,
+      fontWeight: FontWeight.w700,
+      letterSpacing: .8,
+    ),
+  );
 
   BoxDecoration _cardDecoration() => BoxDecoration(
     color: AppTheme.surface.withValues(alpha: 0.8),

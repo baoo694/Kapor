@@ -90,6 +90,7 @@ class LearningVideo {
     required this.titleVi,
     required this.youtubeVideoId,
     required this.domain,
+    required this.durationSeconds,
     required this.koreanSubtitles,
     required this.vietnameseSubtitles,
     required this.quizzes,
@@ -99,6 +100,7 @@ class LearningVideo {
   final String titleVi;
   final String youtubeVideoId;
   final String domain;
+  final int durationSeconds;
   final List<VideoSubtitle> koreanSubtitles;
   final List<VideoSubtitle> vietnameseSubtitles;
   final List<VideoQuiz> quizzes;
@@ -108,6 +110,7 @@ class LearningVideo {
     titleVi: json['titleVi']?.toString() ?? '',
     youtubeVideoId: json['youtubeVideoId']?.toString() ?? '',
     domain: json['domain']?.toString() ?? '',
+    durationSeconds: (json['durationSeconds'] as num?)?.toInt() ?? 0,
     koreanSubtitles: _subtitles(json['koreanSubtitles']),
     vietnameseSubtitles: _subtitles(json['vietnameseSubtitles']),
     quizzes: _quizzes(json['quizMarkers']),
@@ -167,5 +170,26 @@ class VideoService {
         body['success'] == true &&
         body['data'] is Map &&
         body['data']['correct'] == true;
+  }
+
+  Future<bool> saveVideoToken(String videoId, String surface) async {
+    try {
+      final response = await _dio.post(
+        '/membyte/videos/$videoId/flashcards',
+        data: {'surface': surface},
+      );
+      final body = response.data;
+      if (body is! Map || body['success'] != true || body['data'] is! Map) {
+        throw Exception('Phản hồi lưu MemByte không hợp lệ.');
+      }
+      return body['data']['alreadySaved'] == true;
+    } on DioException catch (error) {
+      final data = error.response?.data;
+      throw Exception(
+        data is Map && data['message'] is String
+            ? data['message']
+            : 'Không thể thêm từ vào MemByte. Vui lòng thử lại.',
+      );
+    }
   }
 }

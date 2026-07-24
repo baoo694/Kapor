@@ -31,6 +31,9 @@ public class MembyteFlashcard {
     private String pronunciation;
     private String vietnamese;
     private String english;
+    private String definitionEn;
+    private String exampleKo;
+    private String grammarNote;
     private String context;
     private String codeSnippet;
     private String audioUrl;

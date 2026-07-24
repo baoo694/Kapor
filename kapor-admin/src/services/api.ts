@@ -275,6 +275,24 @@ export const api = {
     return handleResponse(res);
   },
 
+  tokenizeVideoSubtitlesWithAi: async (id: string, subtitles: SubtitleTokenizePayload): Promise<AdminVideoPayload> => {
+    const res = await fetch(`${API_BASE}/api/admin/videos/${id}/subtitles/ai-tokenize`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(subtitles)
+    });
+    return handleResponse(res);
+  },
+
+  translateVideoSubtitlesWithAi: async (id: string, subtitles: SubtitleTokenizePayload): Promise<AdminVideoPayload> => {
+    const res = await fetch(`${API_BASE}/api/admin/videos/${id}/subtitles/translate`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(subtitles)
+    });
+    return handleResponse(res);
+  },
+
   analyzeVideoSubtitlesWithAi: async (id: string, subtitles: SubtitleTokenizePayload): Promise<AdminVideoPayload> => {
     const res = await fetch(`${API_BASE}/api/admin/videos/${id}/subtitles/ai-analyze`, {
       method: 'POST',
