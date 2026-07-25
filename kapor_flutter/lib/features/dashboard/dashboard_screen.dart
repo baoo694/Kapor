@@ -2,13 +2,63 @@ import 'package:flutter/material.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../auth/providers/auth_provider.dart';
+import 'data/dashboard_service.dart';
 
-class DashboardScreen extends StatelessWidget {
+class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
   @override
+  State<DashboardScreen> createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  final DashboardService _dashboardService = DashboardService();
+  DashboardPeriod _period = DashboardPeriod.weekly;
+  DashboardData? _dashboard;
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDashboard();
+  }
+
+  Future<void> _loadDashboard() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+    try {
+      final dashboard = await _dashboardService.getDashboard(_period);
+      if (!mounted) return;
+      setState(() {
+        _dashboard = dashboard;
+        _isLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _errorMessage = error.toString().replaceFirst('Exception: ', '');
+      });
+    }
+  }
+
+  void _selectPeriod(DashboardPeriod period) {
+    if (_period == period && _dashboard != null) return;
+    setState(() => _period = period);
+    _loadDashboard();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final user = context.watch<AuthProvider>().user;
+    final displayName = user?['displayName']?.toString().trim();
+
     return Scaffold(
       appBar: AppBar(
         toolbarHeight: 60,
@@ -27,7 +77,7 @@ class DashboardScreen extends StatelessWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              'Nguyễn Văn A',
+              displayName?.isNotEmpty == true ? displayName! : 'Đang tải…',
               style: TextStyle(
                 fontSize: 22,
                 fontWeight: FontWeight.w800,
@@ -44,33 +94,64 @@ class DashboardScreen extends StatelessWidget {
             height: 36,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: const Color(0xFF00BFA5).withOpacity(0.2), // Tương đương TEAL20
-              border: Border.all(color: const Color(0xFF00BFA5).withOpacity(0.44)),
+              color: const Color(
+                0xFF00BFA5,
+              ).withValues(alpha: 0.2), // Tương đương TEAL20
+              border: Border.all(
+                color: const Color(0xFF00BFA5).withValues(alpha: 0.44),
+              ),
             ),
             child: IconButton(
               padding: EdgeInsets.zero,
-              icon: const Icon(LucideIcons.user, color: Color(0xFF00BFA5), size: 15),
+              icon: const Icon(
+                LucideIcons.user,
+                color: Color(0xFF00BFA5),
+                size: 15,
+              ),
               onPressed: () {},
             ),
-          )
+          ),
         ],
       ),
-      body: SingleChildScrollView(
+      body: _buildBody(context),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    if (_isLoading && _dashboard == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_errorMessage != null && _dashboard == null) {
+      return _DashboardError(message: _errorMessage!, onRetry: _loadDashboard);
+    }
+    final dashboard = _dashboard;
+    if (dashboard == null) {
+      return _DashboardError(
+        message: 'Không thể tải dashboard.',
+        onRetry: _loadDashboard,
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadDashboard,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildStreakCard(),
+            _buildStreakCard(dashboard.streak),
             const SizedBox(height: 16),
-            _buildProgressCard(),
+            _buildProgressCard(dashboard.progress),
             const SizedBox(height: 16),
-            _buildRecommendationCard(),
+            if (dashboard.recommendation != null)
+              _buildRecommendationCard(context, dashboard.recommendation!),
             const SizedBox(height: 24),
             Text(
               'KHÁM PHÁ',
               style: TextStyle(
                 fontSize: 10,
-                color: Colors.white.withOpacity(0.40),
+                color: Colors.white.withValues(alpha: 0.40),
                 fontFamily: 'JetBrains Mono',
                 letterSpacing: 1,
               ),
@@ -83,12 +164,12 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildStreakCard() {
+  Widget _buildStreakCard(DashboardStreak streak) {
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
       child: Row(
@@ -100,11 +181,15 @@ class DashboardScreen extends StatelessWidget {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: AppTheme.secondary.withOpacity(0.22),
+                  color: AppTheme.secondary.withValues(alpha: 0.22),
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: const Center(
-                  child: Icon(LucideIcons.flame, color: AppTheme.secondary, size: 22),
+                  child: Icon(
+                    LucideIcons.flame,
+                    color: AppTheme.secondary,
+                    size: 22,
+                  ),
                 ),
               ),
               Positioned(
@@ -113,8 +198,10 @@ class DashboardScreen extends StatelessWidget {
                 child: Container(
                   width: 16,
                   height: 16,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF00BFA5),
+                  decoration: BoxDecoration(
+                    color: streak.isActiveToday
+                        ? const Color(0xFF00BFA5)
+                        : AppTheme.textSecondary,
                     shape: BoxShape.circle,
                   ),
                   child: const Center(
@@ -133,7 +220,7 @@ class DashboardScreen extends StatelessWidget {
                   TextSpan(
                     children: [
                       TextSpan(
-                        text: '15',
+                        text: streak.currentStreak.toString(),
                         style: TextStyle(
                           fontSize: 32,
                           fontWeight: FontWeight.w800,
@@ -154,10 +241,10 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Kỷ lục: 30 ngày',
+                  'Kỷ lục: ${streak.longestStreak} ngày',
                   style: TextStyle(
                     fontSize: 10,
-                    color: Colors.white.withOpacity(0.45),
+                    color: Colors.white.withValues(alpha: 0.45),
                     fontFamily: 'JetBrains Mono',
                   ),
                 ),
@@ -169,13 +256,15 @@ class DashboardScreen extends StatelessWidget {
             decoration: BoxDecoration(
               color: const Color(0xFF052E26),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF00BFA5).withOpacity(0.3)),
+              border: Border.all(
+                color: const Color(0xFF00BFA5).withValues(alpha: 0.3),
+              ),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'Hôm nay',
+                  streak.isActiveToday ? 'Hôm nay' : 'Chưa học',
                   style: TextStyle(
                     color: const Color(0xFF00BFA5),
                     fontWeight: FontWeight.bold,
@@ -183,9 +272,9 @@ class DashboardScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 4),
-                const Icon(
-                  Icons.check,
-                  color: Color(0xFF00BFA5),
+                Icon(
+                  streak.isActiveToday ? Icons.check : Icons.schedule,
+                  color: const Color(0xFF00BFA5),
                   size: 10,
                 ),
               ],
@@ -196,13 +285,18 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildRecommendationCard() {
+  Widget _buildRecommendationCard(
+    BuildContext context,
+    DashboardRecommendation recommendation,
+  ) {
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: const Color(0xFF00BFA5).withOpacity(0.12),
+        color: const Color(0xFF00BFA5).withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF00BFA5).withOpacity(0.30)),
+        border: Border.all(
+          color: const Color(0xFF00BFA5).withValues(alpha: 0.30),
+        ),
       ),
       padding: const EdgeInsets.all(14),
       child: Row(
@@ -212,11 +306,14 @@ class DashboardScreen extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: const Color(0xFF00BFA5).withOpacity(0.28),
+              color: const Color(0xFF00BFA5).withValues(alpha: 0.28),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Center(
-              child: Icon(LucideIcons.zap, color: Color(0xFF00BFA5), size: 17),
+            child: Center(
+              child: Text(
+                recommendation.icon,
+                style: const TextStyle(fontSize: 17),
+              ),
             ),
           ),
           const SizedBox(width: 12),
@@ -235,20 +332,20 @@ class DashboardScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'CSS Grid & Flexbox 용어',
+                  recommendation.title,
                   style: TextStyle(
                     fontFamily: 'Outfit',
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
-                    color: Colors.white.withOpacity(0.92),
+                    color: Colors.white.withValues(alpha: 0.92),
                   ),
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '15 từ vựng cần ôn tập hôm nay',
+                  recommendation.subtitle,
                   style: TextStyle(
                     fontSize: 11,
-                    color: Colors.white.withOpacity(0.50),
+                    color: Colors.white.withValues(alpha: 0.50),
                   ),
                 ),
               ],
@@ -256,13 +353,15 @@ class DashboardScreen extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           ElevatedButton(
-            onPressed: () {},
+            onPressed: () => _openRecommendation(context, recommendation),
             style: ElevatedButton.styleFrom(
               backgroundColor: const Color(0xFF00BFA5),
               foregroundColor: Colors.black,
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
               minimumSize: const Size(0, 30),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
               elevation: 0,
             ),
             child: Row(
@@ -286,12 +385,21 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildProgressCard() {
+  void _openRecommendation(
+    BuildContext context,
+    DashboardRecommendation recommendation,
+  ) {
+    final route = recommendation.targetScreen;
+    if (route.isEmpty || !route.startsWith('/')) return;
+    context.go(route);
+  }
+
+  Widget _buildProgressCard(DashboardProgress progress) {
     return Container(
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
       child: Column(
@@ -306,103 +414,195 @@ class DashboardScreen extends StatelessWidget {
                   fontFamily: 'Outfit',
                   fontWeight: FontWeight.w600,
                   fontSize: 13,
-                  color: Colors.white.withOpacity(0.85),
+                  color: Colors.white.withValues(alpha: 0.85),
                 ),
               ),
               Row(
                 children: [
-                  _buildPeriodButton('Tuần', true),
+                  _buildPeriodButton(
+                    'Tuần',
+                    _period == DashboardPeriod.weekly,
+                    () => _selectPeriod(DashboardPeriod.weekly),
+                  ),
                   const SizedBox(width: 4),
-                  _buildPeriodButton('Tháng', false),
+                  _buildPeriodButton(
+                    'Tháng',
+                    _period == DashboardPeriod.monthly,
+                    () => _selectPeriod(DashboardPeriod.monthly),
+                  ),
                 ],
-              )
+              ),
             ],
           ),
           const SizedBox(height: 8),
-          SizedBox(
-            height: 150,
-            width: double.infinity,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
-              child: BarChart(
-                BarChartData(
-                  alignment: BarChartAlignment.spaceAround,
-                  maxY: 100,
-                  barTouchData: BarTouchData(enabled: false),
-                  titlesData: FlTitlesData(
-                    show: true,
-                    bottomTitles: AxisTitles(
-                      sideTitles: SideTitles(
-                        showTitles: true,
-                        getTitlesWidget: (value, meta) {
-                          const style = TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 10,
-                            fontFamily: 'JetBrains Mono',
-                          );
-                          String text;
-                          switch (value.toInt()) {
-                            case 0: text = 'Nói'; break;
-                            case 1: text = 'Từ vựng'; break;
-                            case 2: text = 'Nghe'; break;
-                            case 3: text = 'Roleplay'; break;
-                            default: text = ''; break;
-                          }
-                          return SideTitleWidget(
-                            meta: meta,
-                            space: 6,
-                            child: Text(text, style: style),
-                          );
-                        },
-                        reservedSize: 22,
+          if (_isLoading)
+            const SizedBox(
+              height: 150,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (!progress.hasData)
+            SizedBox(
+              height: 150,
+              child: Center(
+                child: Text(
+                  'Chưa có dữ liệu tiến độ trong ${_period == DashboardPeriod.weekly ? 'tuần' : 'tháng'} này.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+              ),
+            )
+          else
+            SizedBox(
+              height: 150,
+              width: double.infinity,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+                child: BarChart(
+                  BarChartData(
+                    alignment: BarChartAlignment.spaceAround,
+                    maxY: 100,
+                    barTouchData: BarTouchData(enabled: false),
+                    titlesData: FlTitlesData(
+                      show: true,
+                      bottomTitles: AxisTitles(
+                        sideTitles: SideTitles(
+                          showTitles: true,
+                          getTitlesWidget: (value, meta) {
+                            const style = TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 10,
+                              fontFamily: 'JetBrains Mono',
+                            );
+                            String text;
+                            switch (value.toInt()) {
+                              case 0:
+                                text = 'Nói';
+                                break;
+                              case 1:
+                                text = 'Từ vựng';
+                                break;
+                              case 2:
+                                text = 'Nghe';
+                                break;
+                              case 3:
+                                text = 'Roleplay';
+                                break;
+                              default:
+                                text = '';
+                                break;
+                            }
+                            return SideTitleWidget(
+                              meta: meta,
+                              space: 6,
+                              child: Text(text, style: style),
+                            );
+                          },
+                          reservedSize: 22,
+                        ),
+                      ),
+                      leftTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false),
+                      ),
+                      topTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false),
+                      ),
+                      rightTitles: const AxisTitles(
+                        sideTitles: SideTitles(showTitles: false),
                       ),
                     ),
-                    leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                    rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                    gridData: FlGridData(
+                      show: true,
+                      drawVerticalLine: false,
+                      horizontalInterval: 25,
+                      getDrawingHorizontalLine: (value) => FlLine(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        strokeWidth: 1,
+                      ),
+                    ),
+                    borderData: FlBorderData(show: false),
+                    barGroups: [
+                      BarChartGroupData(
+                        x: 0,
+                        barRods: [
+                          BarChartRodData(
+                            toY: progress.speaking.toDouble(),
+                            color: const Color(0xFFa78bfa),
+                            width: 14,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ],
+                      ),
+                      BarChartGroupData(
+                        x: 1,
+                        barRods: [
+                          BarChartRodData(
+                            toY: progress.vocabulary.toDouble(),
+                            color: const Color(0xFF00BFA5),
+                            width: 14,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ],
+                      ),
+                      BarChartGroupData(
+                        x: 2,
+                        barRods: [
+                          BarChartRodData(
+                            toY: progress.listening.toDouble(),
+                            color: const Color(0xFFfb923c),
+                            width: 14,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ],
+                      ),
+                      BarChartGroupData(
+                        x: 3,
+                        barRods: [
+                          BarChartRodData(
+                            toY: progress.roleplay.toDouble(),
+                            color: const Color(0xFF34d399),
+                            width: 14,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
-                  gridData: FlGridData(
-                    show: true,
-                    drawVerticalLine: false,
-                    horizontalInterval: 25,
-                    getDrawingHorizontalLine: (value) => FlLine(
-                      color: Colors.white.withOpacity(0.05),
-                      strokeWidth: 1,
-                    ),
-                  ),
-                  borderData: FlBorderData(show: false),
-                  barGroups: [
-                    BarChartGroupData(
-                      x: 0,
-                      barRods: [BarChartRodData(toY: 72, color: const Color(0xFFa78bfa), width: 14, borderRadius: BorderRadius.circular(4))],
-                    ),
-                    BarChartGroupData(
-                      x: 1,
-                      barRods: [BarChartRodData(toY: 85, color: const Color(0xFF00BFA5), width: 14, borderRadius: BorderRadius.circular(4))],
-                    ),
-                    BarChartGroupData(
-                      x: 2,
-                      barRods: [BarChartRodData(toY: 60, color: const Color(0xFFfb923c), width: 14, borderRadius: BorderRadius.circular(4))],
-                    ),
-                    BarChartGroupData(
-                      x: 3,
-                      barRods: [BarChartRodData(toY: 78, color: const Color(0xFF34d399), width: 14, borderRadius: BorderRadius.circular(4))],
-                    ),
-                  ],
+                  duration: const Duration(milliseconds: 150),
+                  curve: Curves.linear,
                 ),
-                swapAnimationDuration: const Duration(milliseconds: 150),
-                swapAnimationCurve: Curves.linear,
               ),
             ),
-          ),
           const SizedBox(height: 8),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildSkillStat('Nói', 72, const Color(0xFFa78bfa)),
-              _buildSkillStat('Từ vựng', 85, const Color(0xFF00BFA5)),
-              _buildSkillStat('Nghe', 60, const Color(0xFFfb923c)),
-              _buildSkillStat('Roleplay', 78, const Color(0xFF34d399)),
+              _buildSkillStat(
+                'Nói',
+                progress.speaking,
+                const Color(0xFFa78bfa),
+                progress.hasData,
+              ),
+              _buildSkillStat(
+                'Từ vựng',
+                progress.vocabulary,
+                const Color(0xFF00BFA5),
+                progress.hasData,
+              ),
+              _buildSkillStat(
+                'Nghe',
+                progress.listening,
+                const Color(0xFFfb923c),
+                progress.hasData,
+              ),
+              _buildSkillStat(
+                'Roleplay',
+                progress.roleplay,
+                const Color(0xFF34d399),
+                progress.hasData,
+              ),
             ],
           ),
         ],
@@ -410,30 +610,37 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPeriodButton(String text, bool isActive) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: isActive ? const Color(0xFF00BFA5) : const Color(0xFF2C2C2E),
+  Widget _buildPeriodButton(String text, bool isActive, VoidCallback onTap) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontFamily: 'JetBrains Mono',
-          fontSize: 10,
-          color: isActive ? Colors.black : AppTheme.textSecondary,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: isActive ? const Color(0xFF00BFA5) : const Color(0xFF2C2C2E),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Text(
+            text,
+            style: TextStyle(
+              fontFamily: 'JetBrains Mono',
+              fontSize: 10,
+              color: isActive ? Colors.black : AppTheme.textSecondary,
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildSkillStat(String label, int value, Color color) {
+  Widget _buildSkillStat(String label, int value, Color color, bool hasData) {
     return Expanded(
       child: Column(
         children: [
           Text(
-            value.toString(),
+            hasData ? value.toString() : '—',
             style: TextStyle(
               fontFamily: 'Outfit',
               fontWeight: FontWeight.w700,
@@ -464,20 +671,55 @@ class DashboardScreen extends StatelessWidget {
       mainAxisSpacing: 10,
       childAspectRatio: 1.5,
       children: [
-        _buildNavCard(context, 'Video Lab', 'Phim kỹ thuật', LucideIcons.play, const Color(0xFFfb923c), '/video'),
-        _buildNavCard(context, 'TechTalk AI', 'Roleplay IT', LucideIcons.messageSquare, const Color(0xFFa78bfa), '/techtalk-select'),
-        _buildNavCard(context, 'Phát âm', 'Luyện giọng', LucideIcons.mic, const Color(0xFF34d399), '/pronunciation-list'),
-        _buildNavCard(context, 'Honorifics', 'Ngữ pháp tôn kính', LucideIcons.target, const Color(0xFFfbbf24), '/honorifics'),
+        _buildNavCard(
+          context,
+          'Video Lab',
+          'Phim kỹ thuật',
+          LucideIcons.play,
+          const Color(0xFFfb923c),
+          '/video',
+        ),
+        _buildNavCard(
+          context,
+          'TechTalk AI',
+          'Roleplay IT',
+          LucideIcons.messageSquare,
+          const Color(0xFFa78bfa),
+          '/techtalk-select',
+        ),
+        _buildNavCard(
+          context,
+          'Phát âm',
+          'Luyện giọng',
+          LucideIcons.mic,
+          const Color(0xFF34d399),
+          '/pronunciation-list',
+        ),
+        _buildNavCard(
+          context,
+          'Honorifics',
+          'Ngữ pháp tôn kính',
+          LucideIcons.target,
+          const Color(0xFFfbbf24),
+          '/honorifics',
+        ),
       ],
     );
   }
 
-  Widget _buildNavCard(BuildContext context, String title, String subTitle, IconData icon, Color color, String route) {
+  Widget _buildNavCard(
+    BuildContext context,
+    String title,
+    String subTitle,
+    IconData icon,
+    Color color,
+    String route,
+  ) {
     return Container(
       decoration: BoxDecoration(
-        color: color.withOpacity(0.10),
+        color: color.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.28)),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
       ),
       child: Material(
         color: Colors.transparent,
@@ -496,12 +738,10 @@ class DashboardScreen extends StatelessWidget {
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: color.withOpacity(0.22),
+                    color: color.withValues(alpha: 0.22),
                     borderRadius: BorderRadius.circular(9),
                   ),
-                  child: Center(
-                    child: Icon(icon, color: color, size: 15),
-                  ),
+                  child: Center(child: Icon(icon, color: color, size: 15)),
                 ),
                 const SizedBox(height: 8),
                 Text(
@@ -510,7 +750,7 @@ class DashboardScreen extends StatelessWidget {
                     fontFamily: 'Outfit',
                     fontWeight: FontWeight.w600,
                     fontSize: 13,
-                    color: Colors.white.withOpacity(0.90),
+                    color: Colors.white.withValues(alpha: 0.90),
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -521,7 +761,7 @@ class DashboardScreen extends StatelessWidget {
                   style: TextStyle(
                     fontFamily: 'JetBrains Mono',
                     fontSize: 10,
-                    color: Colors.white.withOpacity(0.45),
+                    color: Colors.white.withValues(alpha: 0.45),
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -529,6 +769,40 @@ class DashboardScreen extends StatelessWidget {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardError extends StatelessWidget {
+  const _DashboardError({required this.message, required this.onRetry});
+
+  final String message;
+  final Future<void> Function() onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(LucideIcons.wifiOff, color: AppTheme.textSecondary),
+            const SizedBox(height: 12),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: onRetry,
+              icon: const Icon(LucideIcons.refreshCw, size: 16),
+              label: const Text('Thử lại'),
+            ),
+          ],
         ),
       ),
     );

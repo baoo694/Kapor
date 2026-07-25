@@ -6,6 +6,7 @@ import '../config/app_environment.dart';
 class ApiClient {
   static final ApiClient _instance = ApiClient._internal();
   late Dio dio;
+  Future<bool>? _refreshInFlight;
 
   static String get baseUrl => AppEnvironment.apiBaseUrl;
 
@@ -29,7 +30,15 @@ class ApiClient {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          // Add token to headers if available
+          options.headers['X-Timezone-Offset-Minutes'] = DateTime.now()
+              .timeZoneOffset
+              .inMinutes
+              .toString();
+          if (options.extra['skipAuth'] == true ||
+              options.path.startsWith('/auth/')) {
+            return handler.next(options);
+          }
+
           final prefs = await SharedPreferences.getInstance();
           final token = prefs.getString('access_token');
           if (token != null && token.isNotEmpty) {
@@ -37,9 +46,32 @@ class ApiClient {
           }
           return handler.next(options);
         },
-        onError: (DioException e, handler) {
-          // You can handle global errors here (e.g., token expiration -> refresh token)
-          return handler.next(e);
+        onError: (DioException error, handler) async {
+          final request = error.requestOptions;
+          final canRetry =
+              error.response?.statusCode == 401 &&
+              request.extra['skipAuth'] != true &&
+              !request.path.startsWith('/auth/') &&
+              request.extra['retriedAfterRefresh'] != true;
+
+          if (!canRetry || !await _refreshAccessToken()) {
+            return handler.next(error);
+          }
+
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            final accessToken = prefs.getString('access_token');
+            if (accessToken == null || accessToken.isEmpty) {
+              return handler.next(error);
+            }
+
+            request.headers['Authorization'] = 'Bearer $accessToken';
+            request.extra['retriedAfterRefresh'] = true;
+            final response = await dio.fetch<dynamic>(request);
+            return handler.resolve(response);
+          } on DioException catch (retryError) {
+            return handler.next(retryError);
+          }
         },
       ),
     );
@@ -53,5 +85,54 @@ class ApiClient {
         responseHeader: false,
       ),
     );
+  }
+
+  Future<bool> _refreshAccessToken() {
+    if (_refreshInFlight != null) return _refreshInFlight!;
+
+    _refreshInFlight = () async {
+      final prefs = await SharedPreferences.getInstance();
+      final refreshToken = prefs.getString('refresh_token');
+      if (refreshToken == null || refreshToken.isEmpty) {
+        return false;
+      }
+
+      try {
+        final response = await dio.post<Map<String, dynamic>>(
+          '/auth/refresh',
+          data: {'refreshToken': refreshToken},
+          options: Options(extra: {'skipAuth': true}),
+        );
+        final body = response.data;
+        final data = body?['data'];
+        final accessToken = data?['accessToken'];
+        final rotatedRefreshToken = data?['refreshToken'];
+
+        if (body?['success'] != true ||
+            accessToken is! String ||
+            accessToken.isEmpty ||
+            rotatedRefreshToken is! String ||
+            rotatedRefreshToken.isEmpty) {
+          await _clearTokens(prefs);
+          return false;
+        }
+
+        await prefs.setString('access_token', accessToken);
+        await prefs.setString('refresh_token', rotatedRefreshToken);
+        return true;
+      } on DioException {
+        await _clearTokens(prefs);
+        return false;
+      } finally {
+        _refreshInFlight = null;
+      }
+    }();
+
+    return _refreshInFlight!;
+  }
+
+  Future<void> _clearTokens(SharedPreferences prefs) async {
+    await prefs.remove('access_token');
+    await prefs.remove('refresh_token');
   }
 }

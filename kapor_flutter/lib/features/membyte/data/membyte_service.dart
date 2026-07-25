@@ -204,6 +204,7 @@ class MemByteService {
           'cardId': cardId,
           'rating': rating,
           'responseTimeMs': responseTimeMs,
+          'activityId': '$cardId-${DateTime.now().microsecondsSinceEpoch}',
         },
       );
     } on DioException catch (error) {

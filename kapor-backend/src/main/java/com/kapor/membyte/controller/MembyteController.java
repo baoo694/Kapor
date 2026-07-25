@@ -11,6 +11,7 @@ import com.kapor.membyte.dto.MembyteSaveCardDto;
 import com.kapor.membyte.dto.MembyteSaveVideoTokenRequest;
 import com.kapor.membyte.dto.MembyteSavedCardsDto;
 import com.kapor.membyte.service.MembyteService;
+import com.kapor.analytics.service.ActivityTrackingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -20,6 +21,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -31,6 +33,7 @@ import java.util.List;
 public class MembyteController {
 
     private final MembyteService membyteService;
+    private final ActivityTrackingService activityTrackingService;
 
     @PostMapping("/lessons/{lessonId}/flashcards/{vocabularyId}")
     public ResponseEntity<ApiResponse<MembyteSaveCardDto>> saveVocabulary(
@@ -86,9 +89,31 @@ public class MembyteController {
     @PostMapping("/review/rate")
     public ResponseEntity<ApiResponse<MembyteReviewResultDto>> rateCard(
             @Valid @RequestBody MembyteReviewRatingRequest request,
-            Authentication authentication) {
+            Authentication authentication,
+            @RequestHeader(value = "X-Timezone-Offset-Minutes", required = false) Integer timezoneOffsetMinutes) {
+        String userId = userId(authentication);
+        MembyteReviewResultDto result = membyteService.rateCard(userId, request);
+        String activityId = request.getActivityId();
+        String eventKey = activityId == null || activityId.isBlank()
+                ? "membyte-review:" + request.getCardId() + ":" + System.currentTimeMillis()
+                : "membyte-review:" + activityId;
+        activityTrackingService.track(userId, ActivityTrackingService.ActivityUpdate.builder()
+                .eventKey(eventKey)
+                .type("membyte_review")
+                .cardsReviewed(1)
+                .vocabularyScore(scoreFor(request.getRating()))
+                .build(), timezoneOffsetMinutes);
         return ResponseEntity.ok(ApiResponse.ok(
-                membyteService.rateCard(userId(authentication), request), "Đã lên lịch ôn FSRS"));
+                result, "Đã lên lịch ôn FSRS"));
+    }
+
+    private int scoreFor(MembyteReviewRatingRequest.Rating rating) {
+        return switch (rating) {
+            case AGAIN -> 0;
+            case HARD -> 50;
+            case GOOD -> 80;
+            case EASY -> 100;
+        };
     }
 
     private String userId(Authentication authentication) {

@@ -23,8 +23,12 @@ class AuthProvider extends ChangeNotifier {
     final token = prefs.getString('access_token');
     if (token != null && token.isNotEmpty) {
       _isAuthenticated = true;
-      // You can also load user data from preferences here if saved
       notifyListeners();
+
+      // The token only proves that a session may exist; load the profile from
+      // the API so UI elements (for example, the dashboard greeting) always
+      // use the current display name from the database.
+      await fetchCurrentUser();
     }
   }
 

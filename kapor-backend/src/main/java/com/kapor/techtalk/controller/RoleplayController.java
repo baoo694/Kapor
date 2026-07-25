@@ -6,6 +6,7 @@ import com.kapor.techtalk.dto.RoleplayHintDto;
 import com.kapor.techtalk.dto.SendRoleplayMessageRequest;
 import com.kapor.techtalk.model.RoleplaySession;
 import com.kapor.techtalk.service.RoleplayService;
+import com.kapor.analytics.service.ActivityTrackingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -15,16 +16,19 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import java.time.Duration;
 
 @RestController
 @RequestMapping("/api/roleplay")
 @RequiredArgsConstructor
 public class RoleplayController {
     private final RoleplayService roleplayService;
+    private final ActivityTrackingService activityTrackingService;
 
     @PostMapping("/start")
     public ResponseEntity<ApiResponse<RoleplaySession>> start(@RequestParam String scenarioId, Authentication authentication) {
@@ -43,8 +47,24 @@ public class RoleplayController {
     }
 
     @PostMapping("/{sessionId}/end")
-    public ResponseEntity<ApiResponse<RoleplaySession>> end(@PathVariable String sessionId, Authentication authentication) {
-        return ResponseEntity.ok(ApiResponse.ok(roleplayService.end(userId(authentication), sessionId)));
+    public ResponseEntity<ApiResponse<RoleplaySession>> end(
+            @PathVariable String sessionId,
+            Authentication authentication,
+            @RequestHeader(value = "X-Timezone-Offset-Minutes", required = false) Integer timezoneOffsetMinutes) {
+        String userId = userId(authentication);
+        RoleplaySession session = roleplayService.end(userId, sessionId);
+        int elapsedMinutes = session.getStartedAt() == null || session.getEndedAt() == null
+                ? 0
+                : Math.max(1, (int) Math.ceil(Duration.between(session.getStartedAt(), session.getEndedAt()).toSeconds() / 60.0));
+        Integer score = session.getFinalEvaluation() == null ? null : session.getFinalEvaluation().getOverallScore();
+        activityTrackingService.track(userId, ActivityTrackingService.ActivityUpdate.builder()
+                .eventKey("roleplay-complete:" + session.getId())
+                .type("roleplay_complete")
+                .roleplaySessions(1)
+                .minutesStudied(elapsedMinutes)
+                .roleplayScore(score)
+                .build(), timezoneOffsetMinutes);
+        return ResponseEntity.ok(ApiResponse.ok(session));
     }
 
     @GetMapping("/history")

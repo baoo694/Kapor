@@ -13,6 +13,8 @@ public interface DailyActivityRepository extends MongoRepository<DailyActivity, 
 
     Optional<DailyActivity> findByUserIdAndDate(String userId, LocalDate date);
 
+    List<DailyActivity> findByUserIdOrderByDateAsc(String userId);
+
     List<DailyActivity> findByUserIdAndDateBetweenOrderByDateAsc(String userId, LocalDate startDate, LocalDate endDate);
 
     long countByDate(LocalDate date);

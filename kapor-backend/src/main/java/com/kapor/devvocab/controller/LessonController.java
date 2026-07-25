@@ -7,6 +7,7 @@ import com.kapor.devvocab.model.Lesson;
 import com.kapor.devvocab.repository.LessonRepository;
 import com.kapor.common.exception.ResourceNotFoundException;
 import com.kapor.devvocab.service.FlashcardProgressService;
+import com.kapor.analytics.service.ActivityTrackingService;
 import com.kapor.auth.security.CustomUserDetails;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -23,6 +24,7 @@ public class LessonController {
 
     private final LessonRepository lessonRepository;
     private final FlashcardProgressService flashcardProgressService;
+    private final ActivityTrackingService activityTrackingService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<Lesson>>> getLessonsByTopic(@RequestParam String topicId) {
@@ -50,13 +52,29 @@ public class LessonController {
             @PathVariable String id,
             @PathVariable String vocabularyId,
             @Valid @RequestBody FlashcardStatusRequest request,
-            Authentication authentication) {
+            Authentication authentication,
+            @RequestHeader(value = "X-Timezone-Offset-Minutes", required = false) Integer timezoneOffsetMinutes) {
+        String userId = getUserId(authentication);
+        FlashcardProgressDto progress = flashcardProgressService.updateStatus(
+                userId,
+                id,
+                vocabularyId,
+                request.getStatus());
+        activityTrackingService.track(userId, ActivityTrackingService.ActivityUpdate.builder()
+                .eventKey("devvocab-card:" + id + ":" + vocabularyId)
+                .type("devvocab_card")
+                .cardsReviewed(1)
+                .vocabularyScore(request.getStatus() == com.kapor.devvocab.model.FlashcardProgress.Status.KNOWN ? 100 : 50)
+                .build(), timezoneOffsetMinutes);
+        if (progress.getTotalCards() > 0 && progress.getKnownCards() == progress.getTotalCards()) {
+            activityTrackingService.track(userId, ActivityTrackingService.ActivityUpdate.builder()
+                    .eventKey("devvocab-lesson-complete:" + id)
+                    .type("devvocab_lesson_complete")
+                    .lessonsCompleted(1)
+                    .build(), timezoneOffsetMinutes);
+        }
         return ResponseEntity.ok(ApiResponse.ok(
-                flashcardProgressService.updateStatus(
-                        getUserId(authentication),
-                        id,
-                        vocabularyId,
-                        request.getStatus()),
+                progress,
                 "Flashcard progress saved"));
     }
 

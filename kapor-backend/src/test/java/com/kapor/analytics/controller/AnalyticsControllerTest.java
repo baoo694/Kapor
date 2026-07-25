@@ -97,6 +97,7 @@ class AnalyticsControllerTest {
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.progress").isNotEmpty())
                     .andExpect(jsonPath("$.data.progress.period").value("weekly"))
+                    .andExpect(jsonPath("$.data.progress.hasData").value(true))
                     .andExpect(jsonPath("$.data.progress.speaking").isNumber())
                     .andExpect(jsonPath("$.data.progress.vocabulary").isNumber())
                     .andExpect(jsonPath("$.data.progress.listening").isNumber())
@@ -113,7 +114,8 @@ class AnalyticsControllerTest {
                     .andExpect(jsonPath("$.data.progress.speaking").value(0))
                     .andExpect(jsonPath("$.data.progress.vocabulary").value(0))
                     .andExpect(jsonPath("$.data.progress.listening").value(0))
-                    .andExpect(jsonPath("$.data.progress.roleplayScore").value(0));
+                    .andExpect(jsonPath("$.data.progress.roleplayScore").value(0))
+                    .andExpect(jsonPath("$.data.progress.hasData").value(false));
         }
 
         @Test
@@ -145,6 +147,15 @@ class AnalyticsControllerTest {
                             .param("period", "monthly"))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.progress.period").value("monthly"));
+        }
+
+        @Test
+        @DisplayName("should reject an unsupported period")
+        void shouldRejectUnsupportedPeriod() throws Exception {
+            mockMvc.perform(get("/api/analytics/dashboard")
+                            .header("Authorization", "Bearer " + accessToken)
+                            .param("period", "yearly"))
+                    .andExpect(status().isBadRequest());
         }
 
         @Test

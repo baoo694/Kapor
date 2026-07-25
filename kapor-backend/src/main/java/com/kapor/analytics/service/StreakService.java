@@ -15,9 +15,12 @@ public class StreakService {
     private final UserRepository userRepository;
 
     public void updateStreakForUser(String userId) {
+        updateStreakForUser(userId, LocalDate.now());
+    }
+
+    public void updateStreakForUser(String userId, LocalDate today) {
         User user = userRepository.findById(userId).orElseThrow();
         User.Streak streak = user.getStreak();
-        LocalDate today = LocalDate.now();
         LocalDate lastActive = streak.getLastActiveDate();
 
         if (lastActive == null) {

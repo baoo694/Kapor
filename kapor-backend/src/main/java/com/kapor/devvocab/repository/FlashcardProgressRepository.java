@@ -12,6 +12,8 @@ public interface FlashcardProgressRepository extends MongoRepository<FlashcardPr
 
     List<FlashcardProgress> findByUserIdAndLessonId(String userId, String lessonId);
 
+    List<FlashcardProgress> findByUserId(String userId);
+
     Optional<FlashcardProgress> findByUserIdAndLessonIdAndVocabularyId(
             String userId,
             String lessonId,

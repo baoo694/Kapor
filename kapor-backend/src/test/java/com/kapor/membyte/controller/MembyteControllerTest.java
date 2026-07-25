@@ -7,6 +7,7 @@ import com.kapor.devvocab.model.Lesson;
 import com.kapor.devvocab.model.Topic;
 import com.kapor.devvocab.repository.LessonRepository;
 import com.kapor.devvocab.repository.TopicRepository;
+import com.kapor.analytics.repository.DailyActivityRepository;
 import com.kapor.membyte.repository.MembyteDeckRepository;
 import com.kapor.membyte.repository.MembyteFlashcardRepository;
 import com.kapor.user.model.User;
@@ -43,6 +44,7 @@ class MembyteControllerTest {
     @Autowired private MembyteDeckRepository deckRepository;
     @Autowired private MembyteFlashcardRepository flashcardRepository;
     @Autowired private VideoRepository videoRepository;
+    @Autowired private DailyActivityRepository dailyActivityRepository;
 
     private String token;
     private Lesson lesson;
@@ -54,6 +56,7 @@ class MembyteControllerTest {
         lessonRepository.deleteAll();
         topicRepository.deleteAll();
         videoRepository.deleteAll();
+        dailyActivityRepository.deleteAll();
         userRepository.deleteAll();
 
         User user = userRepository.save(TestDataFactory.createTestUser());
@@ -69,6 +72,7 @@ class MembyteControllerTest {
         lessonRepository.deleteAll();
         topicRepository.deleteAll();
         videoRepository.deleteAll();
+        dailyActivityRepository.deleteAll();
         userRepository.deleteAll();
     }
 
@@ -110,6 +114,10 @@ class MembyteControllerTest {
                         .content("{\"cardId\":\"" + cardId + "\",\"rating\":\"GOOD\",\"responseTimeMs\":2500}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.nextReviewLabel").value("1d"));
+
+        var activity = dailyActivityRepository.findAll().get(0);
+        org.junit.jupiter.api.Assertions.assertEquals(1, activity.getCardsReviewed());
+        org.junit.jupiter.api.Assertions.assertEquals(80, activity.getMetrics().getVocabularyScore());
 
         var dueCard = flashcardRepository.findAll().stream()
                 .filter(card -> !card.getId().equals(cardId))

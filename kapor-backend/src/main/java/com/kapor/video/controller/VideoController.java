@@ -3,6 +3,8 @@ package com.kapor.video.controller;
 import com.kapor.common.dto.ApiResponse;
 import com.kapor.video.dto.VideoDto;
 import com.kapor.video.service.VideoService;
+import com.kapor.analytics.service.ActivityTrackingService;
+import com.kapor.auth.security.CustomUserDetails;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -11,8 +13,10 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.security.core.Authentication;
 
 import java.util.List;
 
@@ -21,6 +25,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class VideoController {
     private final VideoService videoService;
+    private final ActivityTrackingService activityTrackingService;
 
     @GetMapping
     public ResponseEntity<ApiResponse<List<VideoDto>>> getVideos(@RequestParam(required = false) String domain) {
@@ -46,9 +51,18 @@ public class VideoController {
     public ResponseEntity<ApiResponse<QuizAnswerResponse>> answerQuiz(
             @PathVariable String videoId,
             @PathVariable String quizId,
-            @RequestBody QuizAnswerRequest request) {
+            @RequestBody QuizAnswerRequest request,
+            Authentication authentication,
+            @RequestHeader(value = "X-Timezone-Offset-Minutes", required = false) Integer timezoneOffsetMinutes) {
+        boolean correct = videoService.answerQuiz(videoId, quizId, request.getAnswer());
+        String userId = ((CustomUserDetails) authentication.getPrincipal()).getUser().getId();
+        activityTrackingService.track(userId, ActivityTrackingService.ActivityUpdate.builder()
+                .eventKey("video-quiz:" + videoId + ":" + quizId)
+                .type("video_quiz")
+                .listeningScore(correct ? 100 : 0)
+                .build(), timezoneOffsetMinutes);
         return ResponseEntity.ok(ApiResponse.ok(new QuizAnswerResponse(
-                videoService.answerQuiz(videoId, quizId, request.getAnswer()))));
+                correct)));
     }
 
     @Data

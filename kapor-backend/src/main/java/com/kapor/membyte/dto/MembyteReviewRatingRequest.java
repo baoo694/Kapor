@@ -17,4 +17,7 @@ public class MembyteReviewRatingRequest {
     private Rating rating;
 
     private Long responseTimeMs;
+
+    /** Client-generated id used to make a retried review idempotent. */
+    private String activityId;
 }

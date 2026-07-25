@@ -31,6 +31,8 @@ public class DashboardResponse {
     @AllArgsConstructor
     public static class ProgressMetrics {
         private String period; // "weekly" | "monthly"
+        private boolean hasData;
+        private int activityDays;
         private int speaking; // 0-100
         private int vocabulary; // 0-100
         private int listening; // 0-100

@@ -51,10 +51,26 @@ public class DailyActivity {
         @Builder.Default
         private int speakingScore = 0; // 0-100
         @Builder.Default
+        private int speakingScoreTotal = 0;
+        @Builder.Default
+        private int speakingSamples = 0;
+        @Builder.Default
         private int vocabularyScore = 0; // 0-100
+        @Builder.Default
+        private int vocabularyScoreTotal = 0;
+        @Builder.Default
+        private int vocabularySamples = 0;
         @Builder.Default
         private int listeningScore = 0; // 0-100
         @Builder.Default
+        private int listeningScoreTotal = 0;
+        @Builder.Default
+        private int listeningSamples = 0;
+        @Builder.Default
         private int roleplayScore = 0; // 0-100
+        @Builder.Default
+        private int roleplayScoreTotal = 0;
+        @Builder.Default
+        private int roleplaySamples = 0;
     }
 }
