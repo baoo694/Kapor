@@ -2,21 +2,29 @@ package com.kapor.pronunciation.service;
 
 import com.kapor.common.exception.ResourceNotFoundException;
 import com.kapor.pronunciation.dto.PronunciationEvaluationDto;
+import com.kapor.pronunciation.dto.PronunciationAttemptDto;
 import com.kapor.pronunciation.model.PronunciationAttempt;
 import com.kapor.pronunciation.model.PronunciationExercise;
 import com.kapor.pronunciation.repository.PronunciationAttemptRepository;
 import com.kapor.pronunciation.repository.PronunciationExerciseRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class PronunciationService {
+    private static final int MAX_RECORDING_SECONDS = 60;
+    private static final Duration AUDIO_RETENTION = Duration.ofDays(7);
+
     private final PronunciationExerciseRepository exerciseRepository;
     private final PronunciationAttemptRepository attemptRepository;
+    private final PronunciationAudioStorage audioStorage;
+    private final PronunciationAssessmentProvider assessmentProvider;
 
     public List<PronunciationExercise> exercises() {
         List<PronunciationExercise> exercises = exerciseRepository.findAllByOrderByOrderAsc();
@@ -34,35 +42,98 @@ public class PronunciationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Pronunciation exercise", "id", id));
     }
 
-    /** Stores a pending attempt. Scores are intentionally null until a Korean-capable
-     * pronunciation assessment provider is configured; the API never invents scores. */
-    public PronunciationEvaluationDto evaluate(String userId, String exerciseId, int sentenceIndex, byte[] audio) {
+    public PronunciationEvaluationDto evaluate(String userId, String exerciseId, int sentenceIndex, byte[] pcm) {
         PronunciationExercise exercise = exercise(exerciseId);
         if (sentenceIndex < 0 || sentenceIndex >= exercise.getSentences().size()) {
             throw new IllegalArgumentException("Invalid sentence index");
         }
+        long durationMs = PcmWavConverter.durationMs(pcm);
+        if (durationMs > MAX_RECORDING_SECONDS * 1000L) {
+            throw new IllegalArgumentException("Bản ghi không được dài quá " + MAX_RECORDING_SECONDS + " giây.");
+        }
+        byte[] wav = PcmWavConverter.toWav(pcm);
+        Instant now = Instant.now();
+        String audioObjectKey = audioStorage.storeAttempt(userId, wav);
         PronunciationAttempt attempt = attemptRepository.save(PronunciationAttempt.builder()
-                .userId(userId).exerciseId(exerciseId).sentenceIndex(sentenceIndex).status("pending_provider")
-                .userWaveform(waveform(audio)).attemptedAt(Instant.now()).build());
-        return PronunciationEvaluationDto.builder().attemptId(attempt.getId()).status(attempt.getStatus())
-                .message("Bản ghi đã được lưu. Cần cấu hình speech provider hỗ trợ tiếng Hàn để chấm điểm.")
-                .scores(null).transcription(List.of())
-                .referenceWaveform(exercise.getSentences().get(sentenceIndex).getWaveformData())
-                .userWaveform(attempt.getUserWaveform()).build();
+                .userId(userId).exerciseId(exerciseId).sentenceIndex(sentenceIndex).status("processing")
+                .provider(assessmentProvider.name()).audioObjectKey(audioObjectKey).audioContentType("audio/wav")
+                .audioDurationMs(durationMs).userWaveform(waveform(pcm)).attemptedAt(now)
+                .expiresAt(now.plus(AUDIO_RETENTION)).build());
+        try {
+            PronunciationAssessmentProvider.Assessment assessment = assessmentProvider.assess(
+                    userId, exercise.getSentences().get(sentenceIndex).getText(), wav);
+            attempt.setStatus("completed");
+            attempt.setScores(assessment.scores());
+            attempt.setTranscriptionText(assessment.transcription());
+            attempt.setTranscription(assessment.wordFeedback());
+            attempt.setAnalysis(assessment.analysis());
+            attempt = attemptRepository.save(attempt);
+            return evaluation(attempt, exercise, "Whisper đã nhận diện câu nói và Gemini đã phân tích kết quả.");
+        } catch (RuntimeException exception) {
+            attempt.setStatus("provider_error");
+            attemptRepository.save(attempt);
+            throw exception;
+        }
     }
 
-    public List<PronunciationAttempt> history(String userId) { return attemptRepository.findByUserIdOrderByAttemptedAtDesc(userId); }
+    public List<PronunciationAttemptDto> history(String userId, String exerciseId) {
+        List<PronunciationAttempt> attempts = exerciseId == null || exerciseId.isBlank()
+                ? attemptRepository.findByUserIdOrderByAttemptedAtDesc(userId)
+                : attemptRepository.findByUserIdAndExerciseIdOrderByAttemptedAtDesc(userId, exerciseId);
+        return attempts.stream().map(this::historyEntry).toList();
+    }
 
-    private List<Double> waveform(byte[] audio) {
-        if (audio == null || audio.length == 0) return List.of();
-        int buckets = Math.min(64, Math.max(8, audio.length / 256));
+    public PronunciationAudioStorage.AudioData attemptAudio(String userId, String attemptId) {
+        PronunciationAttempt attempt = attemptRepository.findById(attemptId)
+                .orElseThrow(() -> new ResourceNotFoundException("Pronunciation attempt", "id", attemptId));
+        if (!userId.equals(attempt.getUserId())) throw new AccessDeniedException("Bạn không có quyền nghe bản ghi này.");
+        if (attempt.getAudioObjectKey() == null || attempt.getAudioObjectKey().isBlank()) {
+            throw new ResourceNotFoundException("Pronunciation recording", "attemptId", attemptId);
+        }
+        return audioStorage.read(attempt.getAudioObjectKey());
+    }
+
+    public void deleteExpiredAudio() {
+        attemptRepository.findByExpiresAtBeforeAndAudioObjectKeyIsNotNull(Instant.now()).forEach(attempt -> {
+            audioStorage.deleteQuietly(attempt.getAudioObjectKey());
+            attempt.setAudioObjectKey(null);
+            attempt.setAudioContentType(null);
+            attemptRepository.save(attempt);
+        });
+    }
+
+    private PronunciationEvaluationDto evaluation(PronunciationAttempt attempt, PronunciationExercise exercise, String message) {
+        return PronunciationEvaluationDto.builder().attemptId(attempt.getId()).status(attempt.getStatus()).message(message)
+                .scores(attempt.getScores()).transcriptionText(attempt.getTranscriptionText()).analysis(attempt.getAnalysis())
+                .transcription(attempt.getTranscription())
+                .referenceWaveform(exercise.getSentences().get(attempt.getSentenceIndex()).getWaveformData())
+                .userWaveform(attempt.getUserWaveform())
+                .attemptAudioUrl("/pronunciation/attempts/" + attempt.getId() + "/audio").build();
+    }
+
+    private PronunciationAttemptDto historyEntry(PronunciationAttempt attempt) {
+        return PronunciationAttemptDto.builder().id(attempt.getId()).exerciseId(attempt.getExerciseId())
+                .sentenceIndex(attempt.getSentenceIndex()).status(attempt.getStatus()).scores(attempt.getScores())
+                .transcriptionText(attempt.getTranscriptionText()).analysis(attempt.getAnalysis()).transcription(attempt.getTranscription())
+                .userWaveform(attempt.getUserWaveform()).attemptedAt(attempt.getAttemptedAt())
+                .audioDurationMs(attempt.getAudioDurationMs())
+                .attemptAudioUrl(attempt.getAudioObjectKey() == null ? "" : "/pronunciation/attempts/" + attempt.getId() + "/audio")
+                .build();
+    }
+
+    private List<Double> waveform(byte[] pcm) {
+        if (pcm == null || pcm.length == 0) return List.of();
+        int buckets = Math.min(64, Math.max(8, pcm.length / 512));
         java.util.ArrayList<Double> values = new java.util.ArrayList<>();
         for (int bucket = 0; bucket < buckets; bucket++) {
-            int start = bucket * audio.length / buckets;
-            int end = Math.max(start + 1, (bucket + 1) * audio.length / buckets);
+            int start = bucket * pcm.length / buckets;
+            int end = Math.max(start + 1, (bucket + 1) * pcm.length / buckets);
             long sum = 0;
-            for (int index = start; index < end; index++) sum += Math.abs(audio[index]);
-            values.add(Math.min(1d, sum / (double) ((end - start) * 128)));
+            for (int index = start; index < end; index += 2) {
+                int sample = (pcm[index] & 0xff) | (pcm[Math.min(index + 1, pcm.length - 1)] << 8);
+                sum += Math.abs((short) sample);
+            }
+            values.add(Math.min(1d, sum / (double) (Math.max(1, (end - start) / 2) * Short.MAX_VALUE)));
         }
         return values;
     }

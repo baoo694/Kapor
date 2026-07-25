@@ -1,9 +1,24 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+from threading import Lock
+import logging
+import os
 import mecab
 
 app = FastAPI(title="Kapor NLP Service")
+logger = logging.getLogger(__name__)
+
+# Whisper is intentionally loaded on the first pronunciation request so the
+# existing tokenizer endpoints can start quickly. Model files are downloaded
+# once by faster-whisper and then kept in the Docker volume/cache.
+_whisper_model = None
+_whisper_lock = Lock()
+WHISPER_MODEL_NAME = os.getenv("WHISPER_MODEL", "small")
+WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")
+WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
 
 # Initialize Mecab tokenizer for Korean
 try:
@@ -24,11 +39,27 @@ class Token(BaseModel):
 class TokenizeResponse(BaseModel):
     tokens: List[Token]
 
+class TranscribedWord(BaseModel):
+    text: str
+    startSeconds: float
+    endSeconds: float
+    probability: Optional[float] = None
+
+class WhisperTranscriptionResponse(BaseModel):
+    text: str
+    durationSeconds: float
+    words: List[TranscribedWord]
+
 CONTENT_POS_TAGS = {"NNG", "NNP", "VV", "VA", "MAG", "SL", "SH"}
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "mecab_initialized": m is not None}
+    return {
+        "status": "ok",
+        "mecab_initialized": m is not None,
+        "whisper_model": WHISPER_MODEL_NAME,
+        "whisper_loaded": _whisper_model is not None,
+    }
 
 @app.post("/tokenize", response_model=TokenizeResponse)
 def tokenize_text(request: TokenizeRequest):
@@ -58,6 +89,72 @@ def tokenize_text(request: TokenizeRequest):
         ))
         
     return TokenizeResponse(tokens=tokens)
+
+def get_whisper_model():
+    global _whisper_model
+    if _whisper_model is not None:
+        return _whisper_model
+    with _whisper_lock:
+        if _whisper_model is None:
+            try:
+                from faster_whisper import WhisperModel
+                _whisper_model = WhisperModel(
+                    WHISPER_MODEL_NAME,
+                    device=WHISPER_DEVICE,
+                    compute_type=WHISPER_COMPUTE_TYPE,
+                )
+            except Exception as error:
+                logger.exception("Unable to load local Whisper model '%s'", WHISPER_MODEL_NAME)
+                raise HTTPException(
+                    status_code=503,
+                    detail="Whisper local model is unavailable. Check model download and runtime memory.",
+                ) from error
+    return _whisper_model
+
+@app.post("/pronunciation/transcribe", response_model=WhisperTranscriptionResponse)
+async def transcribe_korean_pronunciation(audio: UploadFile = File(...)):
+    """Offline Korean STT. Scoring stays in Spring so it is auditable and deterministic."""
+    if audio.content_type not in {"audio/wav", "audio/x-wav", "application/octet-stream"}:
+        raise HTTPException(status_code=400, detail="Expected WAV audio")
+    suffix = Path(audio.filename or "attempt.wav").suffix or ".wav"
+    temp_path = None
+    try:
+        with NamedTemporaryFile(suffix=suffix, delete=False) as temp_file:
+            temp_path = temp_file.name
+            temp_file.write(await audio.read())
+
+        model = get_whisper_model()
+        segments, info = model.transcribe(
+            temp_path,
+            language="ko",
+            task="transcribe",
+            beam_size=5,
+            vad_filter=True,
+            word_timestamps=True,
+        )
+        text_parts = []
+        words = []
+        for segment in segments:
+            text_parts.append(segment.text.strip())
+            for word in segment.words or []:
+                words.append(TranscribedWord(
+                    text=word.word.strip(),
+                    startSeconds=round(word.start, 2),
+                    endSeconds=round(word.end, 2),
+                    probability=round(word.probability, 3) if word.probability is not None else None,
+                ))
+        return WhisperTranscriptionResponse(
+            text=" ".join(part for part in text_parts if part).strip(),
+            durationSeconds=round(info.duration, 2),
+            words=words,
+        )
+    except HTTPException:
+        raise
+    except Exception as error:
+        raise HTTPException(status_code=502, detail="Whisper could not transcribe this recording") from error
+    finally:
+        if temp_path:
+            Path(temp_path).unlink(missing_ok=True)
 
 if __name__ == "__main__":
     import uvicorn

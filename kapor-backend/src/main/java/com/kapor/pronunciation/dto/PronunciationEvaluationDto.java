@@ -13,7 +13,10 @@ public class PronunciationEvaluationDto {
     private String status;
     private String message;
     private PronunciationAttempt.Scores scores;
+    private String transcriptionText;
+    private PronunciationAttempt.Analysis analysis;
     private List<PronunciationAttempt.WordFeedback> transcription;
     private List<Double> referenceWaveform;
     private List<Double> userWaveform;
+    private String attemptAudioUrl;
 }

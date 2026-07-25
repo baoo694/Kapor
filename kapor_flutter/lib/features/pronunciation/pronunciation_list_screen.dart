@@ -36,8 +36,9 @@ class _PronunciationListScreenState extends State<PronunciationListScreen> {
       body: FutureBuilder<List<PronunciationExercise>>(
         future: _future,
         builder: (context, snapshot) {
-          if (snapshot.connectionState != ConnectionState.done)
+          if (snapshot.connectionState != ConnectionState.done) {
             return const Center(child: CircularProgressIndicator());
+          }
           if (snapshot.hasError) {
             return Center(
               child: TextButton(

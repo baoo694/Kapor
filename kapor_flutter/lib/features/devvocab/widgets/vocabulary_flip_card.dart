@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../../core/audio/korean_tts_player.dart';
 import '../../../core/theme/app_theme.dart';
 import '../data/devvocab_service.dart';
 
@@ -57,6 +58,17 @@ class _VocabularyFlipCardState extends State<VocabularyFlipCard>
       _controller.forward();
     } else {
       _controller.reverse();
+    }
+  }
+
+  Future<void> _playPronunciation() async {
+    try {
+      await KoreanTtsPlayer.instance.playOrStop(widget.vocabulary.korean);
+    } on KoreanTtsException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
     }
   }
 
@@ -115,12 +127,28 @@ class _VocabularyFlipCardState extends State<VocabularyFlipCard>
       child: Stack(
         children: [
           if (widget.showActions)
-            const Align(
+            Align(
               alignment: Alignment.topLeft,
-              child: Icon(
-                Icons.volume_up_outlined,
-                color: Colors.white,
-                size: 30,
+              child: ValueListenableBuilder<String?>(
+                valueListenable: KoreanTtsPlayer.instance.activeText,
+                builder: (context, activeText, child) {
+                  final isActive = activeText == widget.vocabulary.korean;
+                  return IconButton(
+                    tooltip: isActive ? 'Dừng phát âm' : 'Nghe phát âm',
+                    onPressed: _playPronunciation,
+                    icon: isActive
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(
+                            Icons.volume_up_outlined,
+                            color: Colors.white,
+                            size: 30,
+                          ),
+                  );
+                },
               ),
             ),
           Center(

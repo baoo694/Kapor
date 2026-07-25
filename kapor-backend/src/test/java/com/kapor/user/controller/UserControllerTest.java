@@ -105,7 +105,7 @@ class UserControllerTest {
         @DisplayName("should return 401 without authentication")
         void shouldReturn401WithoutAuth() throws Exception {
             mockMvc.perform(get("/api/users/me"))
-                    .andExpect(status().isForbidden());
+                    .andExpect(status().isUnauthorized());
         }
 
         @Test
@@ -113,7 +113,7 @@ class UserControllerTest {
         void shouldReturn401WithInvalidToken() throws Exception {
             mockMvc.perform(get("/api/users/me")
                             .header("Authorization", "Bearer invalid-jwt-token"))
-                    .andExpect(status().isForbidden());
+                    .andExpect(status().isUnauthorized());
         }
     }
 
@@ -205,7 +205,7 @@ class UserControllerTest {
             mockMvc.perform(put("/api/users/me")
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(request)))
-                    .andExpect(status().isForbidden());
+                    .andExpect(status().isUnauthorized());
         }
     }
 }

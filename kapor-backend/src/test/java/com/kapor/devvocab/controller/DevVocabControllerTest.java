@@ -221,7 +221,7 @@ class DevVocabControllerTest {
         void shouldReturn401WithoutAuth() throws Exception {
             mockMvc.perform(get("/api/topics")
                             .param("domain", "frontend"))
-                    .andExpect(status().isForbidden());
+                    .andExpect(status().isUnauthorized());
         }
     }
 

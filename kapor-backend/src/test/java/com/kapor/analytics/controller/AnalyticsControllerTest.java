@@ -162,7 +162,7 @@ class AnalyticsControllerTest {
         @DisplayName("should return 401 without authentication")
         void shouldReturn401WithoutAuth() throws Exception {
             mockMvc.perform(get("/api/analytics/dashboard"))
-                    .andExpect(status().isForbidden());
+                    .andExpect(status().isUnauthorized());
         }
     }
 }

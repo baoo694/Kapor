@@ -22,10 +22,17 @@ public class PronunciationAttempt {
     private String exerciseId;
     private int sentenceIndex;
     private String status;
+    private String provider;
+    private String audioObjectKey;
+    private String audioContentType;
+    private Long audioDurationMs;
     private Scores scores;
+    private String transcriptionText;
+    private Analysis analysis;
     @Builder.Default private List<WordFeedback> transcription = new ArrayList<>();
     @Builder.Default private List<Double> userWaveform = new ArrayList<>();
     private Instant attemptedAt;
+    private Instant expiresAt;
 
     @Data @Builder @NoArgsConstructor @AllArgsConstructor
     public static class Scores {
@@ -38,7 +45,16 @@ public class PronunciationAttempt {
     @Data @Builder @NoArgsConstructor @AllArgsConstructor
     public static class WordFeedback {
         private String text;
+        private Integer score;
         private String accuracy;
         private String phonemeDetail;
+    }
+
+    /** Learner-facing analysis produced from the Whisper transcript by Gemini. */
+    @Data @Builder @NoArgsConstructor @AllArgsConstructor
+    public static class Analysis {
+        private String summaryVi;
+        private String correctedText;
+        private String grammarNoteVi;
     }
 }

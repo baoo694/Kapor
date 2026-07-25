@@ -1,6 +1,7 @@
 package com.kapor.common.exception;
 
 import com.kapor.common.dto.ApiResponse;
+import com.kapor.pronunciation.exception.PronunciationAssessmentException;
 import com.kapor.video.exception.GeminiApiException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -61,6 +62,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleGemini(GeminiApiException ex) {
         return ResponseEntity.status(ex.getStatus())
                 .body(ApiResponse.error("GEMINI_ERROR", ex.getMessage()));
+    }
+
+    @ExceptionHandler(PronunciationAssessmentException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePronunciationAssessment(PronunciationAssessmentException ex) {
+        return ResponseEntity.status(ex.getStatus())
+                .body(ApiResponse.error("PRONUNCIATION_SERVICE_UNAVAILABLE", ex.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)

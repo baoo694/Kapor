@@ -4,13 +4,19 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../core/audio/korean_tts_player.dart';
 import '../../core/theme/app_theme.dart';
 import 'data/membyte_service.dart';
 
 class MemByteReviewScreen extends StatefulWidget {
   final String? deckId;
+  final String fallbackRoute;
 
-  const MemByteReviewScreen({super.key, this.deckId});
+  const MemByteReviewScreen({
+    super.key,
+    this.deckId,
+    this.fallbackRoute = '/membyte',
+  });
 
   @override
   State<MemByteReviewScreen> createState() => _MemByteReviewScreenState();
@@ -117,6 +123,25 @@ class _MemByteReviewScreenState extends State<MemByteReviewScreen>
     }
   }
 
+  void _exitReview() {
+    if (context.canPop()) {
+      context.pop();
+      return;
+    }
+    context.go(widget.fallbackRoute);
+  }
+
+  Future<void> _playPronunciation(MemByteReviewCard card) async {
+    try {
+      await KoreanTtsPlayer.instance.playOrStop(card.korean);
+    } on KoreanTtsException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -124,7 +149,12 @@ class _MemByteReviewScreenState extends State<MemByteReviewScreen>
     }
     if (_errorMessage != null) {
       return Scaffold(
-        appBar: AppBar(),
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: _exitReview,
+          ),
+        ),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -144,7 +174,10 @@ class _MemByteReviewScreenState extends State<MemByteReviewScreen>
       );
     }
     if (_flashcards.isEmpty) {
-      return _ReviewCompleteScreen(reviewedCount: _reviewedCount);
+      return _ReviewCompleteScreen(
+        reviewedCount: _reviewedCount,
+        onExit: _exitReview,
+      );
     }
 
     final card = _flashcards.first;
@@ -157,7 +190,7 @@ class _MemByteReviewScreenState extends State<MemByteReviewScreen>
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
-          onPressed: () => context.pop(),
+          onPressed: _exitReview,
         ),
         title: Text('Ôn tập · $remaining còn lại'),
       ),
@@ -309,9 +342,26 @@ class _MemByteReviewScreenState extends State<MemByteReviewScreen>
               color: AppTheme.primary.withValues(alpha: 0.18),
               shape: BoxShape.circle,
             ),
-            child: IconButton(
-              icon: Icon(Icons.volume_up, size: 18, color: AppTheme.primary),
-              onPressed: () {},
+            child: ValueListenableBuilder<String?>(
+              valueListenable: KoreanTtsPlayer.instance.activeText,
+              builder: (context, activeText, child) {
+                final isActive = activeText == card.korean;
+                return IconButton(
+                  tooltip: isActive ? 'Dừng phát âm' : 'Nghe phát âm',
+                  icon: isActive
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          Icons.volume_up,
+                          size: 18,
+                          color: AppTheme.primary,
+                        ),
+                  onPressed: () => _playPronunciation(card),
+                );
+              },
             ),
           ),
           const SizedBox(height: 16),
@@ -457,17 +507,18 @@ class _MemByteReviewScreenState extends State<MemByteReviewScreen>
 
 class _ReviewCompleteScreen extends StatelessWidget {
   final int reviewedCount;
+  final VoidCallback onExit;
 
-  const _ReviewCompleteScreen({required this.reviewedCount});
+  const _ReviewCompleteScreen({
+    required this.reviewedCount,
+    required this.onExit,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => context.pop(),
-        ),
+        leading: IconButton(icon: const Icon(Icons.close), onPressed: onExit),
       ),
       body: Center(
         child: Padding(
@@ -503,7 +554,7 @@ class _ReviewCompleteScreen extends StatelessWidget {
               ),
               const SizedBox(height: 20),
               ElevatedButton(
-                onPressed: () => context.pop(),
+                onPressed: onExit,
                 child: const Text('Quay lại MemByte'),
               ),
             ],

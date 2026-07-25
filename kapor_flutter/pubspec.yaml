@@ -46,6 +46,7 @@ dependencies:
   youtube_player_iframe: ^6.0.2
   record: ^6.2.1
   just_audio: ^0.10.6
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:

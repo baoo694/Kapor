@@ -5,8 +5,11 @@ import com.kapor.auth.security.CustomUserDetails;
 import com.kapor.auth.security.JwtService;
 import com.kapor.user.model.User;
 import com.kapor.user.repository.UserRepository;
+import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.security.Keys;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -14,6 +17,10 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.Date;
 
 /**
  * Integration tests for Security configuration.
@@ -33,6 +40,9 @@ class SecurityConfigTest {
 
     @Autowired
     private JwtService jwtService;
+
+    @Value("${jwt.secret}")
+    private String jwtSecret;
 
     private String userToken;
     private String adminToken;
@@ -86,7 +96,7 @@ class SecurityConfigTest {
         @DisplayName("should reject requests without Authorization header")
         void shouldRejectWithoutAuthHeader() throws Exception {
             mockMvc.perform(get("/api/users/me"))
-                    .andExpect(status().isForbidden());
+                    .andExpect(status().isUnauthorized());
         }
 
         @Test
@@ -94,7 +104,7 @@ class SecurityConfigTest {
         void shouldRejectMalformedToken() throws Exception {
             mockMvc.perform(get("/api/users/me")
                             .header("Authorization", "Bearer not-a-real-jwt"))
-                    .andExpect(status().isForbidden());
+                    .andExpect(status().isUnauthorized());
         }
 
         @Test
@@ -102,7 +112,22 @@ class SecurityConfigTest {
         void shouldRejectMissingBearerPrefix() throws Exception {
             mockMvc.perform(get("/api/users/me")
                             .header("Authorization", userToken))
-                    .andExpect(status().isForbidden());
+                    .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @DisplayName("should return 401 for an expired access token")
+        void shouldRejectExpiredAccessToken() throws Exception {
+            String expiredToken = Jwts.builder()
+                    .subject("expired@example.com")
+                    .issuedAt(Date.from(Instant.now().minusSeconds(60)))
+                    .expiration(Date.from(Instant.now().minusSeconds(1)))
+                    .signWith(Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8)))
+                    .compact();
+
+            mockMvc.perform(get("/api/users/me")
+                            .header("Authorization", "Bearer " + expiredToken))
+                    .andExpect(status().isUnauthorized());
         }
 
         @Test

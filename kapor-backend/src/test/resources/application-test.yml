@@ -58,6 +58,9 @@ minio:
   secret-key: minioadmin
   bucket-name: kapor-test
 
+whisper:
+  service-url: http://localhost:8001
+
 # NLP Microservice
 nlp:
   service-url: http://localhost:8001

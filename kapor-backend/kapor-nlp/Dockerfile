@@ -5,6 +5,7 @@ WORKDIR /app
 # Install system dependencies required for mecab-ko
 RUN apt-get update && apt-get install -y \
     curl \
+    ffmpeg \
     g++ \
     make \
     xz-utils \

@@ -137,7 +137,12 @@ final GoRouter appRouter = GoRouter(
       path: '/membyte-review/:id',
       pageBuilder: (context, state) {
         final id = state.pathParameters['id'];
-        return NoTransitionPage(child: MemByteReviewScreen(deckId: id));
+        final fallbackRoute = state.uri.queryParameters['from'] == 'dashboard'
+            ? '/dashboard'
+            : '/membyte';
+        return NoTransitionPage(
+          child: MemByteReviewScreen(deckId: id, fallbackRoute: fallbackRoute),
+        );
       },
     ),
     GoRoute(

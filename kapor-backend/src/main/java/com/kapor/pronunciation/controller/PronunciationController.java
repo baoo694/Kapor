@@ -3,11 +3,12 @@ package com.kapor.pronunciation.controller;
 import com.kapor.auth.security.CustomUserDetails;
 import com.kapor.common.dto.ApiResponse;
 import com.kapor.pronunciation.dto.PronunciationEvaluationDto;
-import com.kapor.pronunciation.model.PronunciationAttempt;
+import com.kapor.pronunciation.dto.PronunciationAttemptDto;
 import com.kapor.pronunciation.model.PronunciationExercise;
 import com.kapor.pronunciation.service.PronunciationService;
 import com.kapor.analytics.service.ActivityTrackingService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -46,12 +47,15 @@ public class PronunciationController {
             @RequestParam(defaultValue = "0") int sentenceIndex, Authentication authentication,
             @RequestHeader(value = "X-Timezone-Offset-Minutes", required = false) Integer timezoneOffsetMinutes) throws IOException {
         if (audioFile.isEmpty()) throw new IllegalArgumentException("Audio file is required");
-        if (audioFile.getSize() > 10 * 1024 * 1024) throw new IllegalArgumentException("Audio must not exceed 10 MB");
+        if (audioFile.getSize() > 2 * 1024 * 1024) throw new IllegalArgumentException("Bản ghi không được vượt quá 2 MB");
+        String contentType = audioFile.getContentType();
+        if (contentType != null && !contentType.equalsIgnoreCase("audio/pcm") && !contentType.equalsIgnoreCase("audio/l16")
+                && !contentType.equalsIgnoreCase("application/octet-stream")) {
+            throw new IllegalArgumentException("Chỉ hỗ trợ bản ghi PCM 16-bit, 16 kHz từ ứng dụng.");
+        }
         String userId = userId(authentication);
         PronunciationEvaluationDto result = pronunciationService.evaluate(
                 userId, exerciseId, sentenceIndex, audioFile.getBytes());
-        // Scores remain null until a Korean speech provider is configured; the
-        // activity still updates the learner's streak without inventing data.
         activityTrackingService.track(userId, ActivityTrackingService.ActivityUpdate.builder()
                 .eventKey("pronunciation-attempt:" + result.getAttemptId())
                 .type("pronunciation_attempt")
@@ -60,8 +64,16 @@ public class PronunciationController {
     }
 
     @GetMapping("/history")
-    public ResponseEntity<ApiResponse<List<PronunciationAttempt>>> history(Authentication authentication) {
-        return ResponseEntity.ok(ApiResponse.ok(pronunciationService.history(userId(authentication))));
+    public ResponseEntity<ApiResponse<List<PronunciationAttemptDto>>> history(
+            @RequestParam(required = false) String exerciseId, Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.ok(pronunciationService.history(userId(authentication), exerciseId)));
+    }
+
+    @GetMapping(value = "/attempts/{id}/audio", produces = "audio/wav")
+    public ResponseEntity<byte[]> attemptAudio(@PathVariable String id, Authentication authentication) {
+        var audio = pronunciationService.attemptAudio(userId(authentication), id);
+        return ResponseEntity.ok().contentType(MediaType.valueOf(audio.contentType()))
+                .contentLength(audio.bytes().length).body(audio.bytes());
     }
 
     private String userId(Authentication authentication) {

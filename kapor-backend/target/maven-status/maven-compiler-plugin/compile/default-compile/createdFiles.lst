@@ -1,5 +1,4 @@
 com/kapor/honorifics/service/HonorificsAiService.class
-com/kapor/analytics/service/ActivityTrackingService$1.class
 com/kapor/video/service/GeminiSubtitleService$AnalysisLine.class
 com/kapor/analytics/service/ActivityTrackingService$Metric.class
 com/kapor/video/service/GeminiSubtitleService$TranslationLine.class
@@ -8,7 +7,6 @@ com/kapor/auth/dto/RefreshTokenRequest.class
 com/kapor/video/service/SubtitleTokenizer.class
 com/kapor/video/dto/SubtitleTokenizeRequest.class
 com/kapor/video/dto/SubtitleUpdateRequest.class
-com/kapor/analytics/service/AnalyticsService$1.class
 com/kapor/honorifics/service/HonorificsService$Rule.class
 com/kapor/analytics/service/AnalyticsService$MetricAverage.class
 com/kapor/video/exception/GeminiApiException.class

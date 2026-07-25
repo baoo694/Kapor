@@ -391,7 +391,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ) {
     final route = recommendation.targetScreen;
     if (route.isEmpty || !route.startsWith('/')) return;
-    context.go(route);
+
+    final destination = Uri.parse(route).replace(
+      queryParameters: {
+        ...Uri.parse(route).queryParameters,
+        'from': 'dashboard',
+      },
+    );
+    // A recommendation opens as a detail flow. Keep Dashboard in the stack so
+    // the review screen's back button returns the user to where they started.
+    context.push(destination.toString());
   }
 
   Widget _buildProgressCard(DashboardProgress progress) {

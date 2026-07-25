@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: kapor-backend
+  config:
+    # Enables local development with kapor-backend/.env while deployment still
+    # receives the same variables from the container environment.
+    import: optional:file:.env[.properties]
 
   # MongoDB
   data:
@@ -55,12 +59,35 @@ gemini:
   api-key: ${GEMINI_API_KEY:}
   model-name: ${GEMINI_MODEL:gemini-2.5-flash}
   subtitle-batch-size: 12
+  tts:
+    model-name: ${GEMINI_TTS_MODEL:gemini-2.5-flash-preview-tts}
+    voice-name: ${GEMINI_TTS_VOICE:Kore}
+    prompt-version: ${GEMINI_TTS_PROMPT_VERSION:v1}
+    max-cache-misses-per-minute: ${GEMINI_TTS_MAX_CACHE_MISSES_PER_MINUTE:12}
 # MinIO (Object Storage)
 minio:
   endpoint: ${MINIO_ENDPOINT:http://localhost:9000}
   access-key: ${MINIO_ACCESS_KEY:minioadmin}
   secret-key: ${MINIO_SECRET_KEY:minioadmin}
   bucket-name: ${MINIO_BUCKET:kapor}
+
+# Whisper only transcribes. Gemini compares the transcript with the reference
+# sentence and produces the learner-facing score, correction, and explanation.
+whisper:
+  provider: ${WHISPER_PROVIDER:local}
+  service-url: ${WHISPER_SERVICE_URL:http://localhost:8001}
+
+# Set WHISPER_PROVIDER=openai and OPENAI_API_KEY to use OpenAI's hosted
+# Whisper transcription API instead of the local faster-whisper container.
+openai:
+  api-key: ${OPENAI_API_KEY:}
+  whisper:
+    model-name: ${OPENAI_WHISPER_MODEL:whisper-1}
+
+pronunciation:
+  audio:
+    # Learner recordings are private and deleted after seven days by default.
+    cleanup-cron: ${PRONUNCIATION_AUDIO_CLEANUP_CRON:0 20 3 * * *}
 
 # NLP Microservice
 nlp:
