@@ -14,6 +14,8 @@ import java.util.List;
 public class HonorificsAnalysisDto {
     private String currentLevel;
     private double confidence;
+    /** Indicates whether the result came from deterministic rules or Gemini fallback. */
+    private String analysisSource;
     private List<CorrectionDiffDto> corrections;
     private String transformedText;
 }

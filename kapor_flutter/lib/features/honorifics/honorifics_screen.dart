@@ -15,6 +15,7 @@ class HonorificsScreen extends StatefulWidget {
 
 class _HonorificsScreenState extends State<HonorificsScreen> {
   final _controller = TextEditingController(text: '나 오늘 서버 배포 했어. 너 확인해봐.');
+  final _inputFocusNode = FocusNode();
   final _service = HonorificsService();
   HonorificAnalysis? _analysis;
   String? _error;
@@ -24,10 +25,17 @@ class _HonorificsScreenState extends State<HonorificsScreen> {
   @override
   void dispose() {
     _controller.dispose();
+    _inputFocusNode.dispose();
     super.dispose();
   }
 
+  void _dismissKeyboard() {
+    _inputFocusNode.unfocus();
+    FocusScope.of(context).unfocus();
+  }
+
   Future<void> _analyze() async {
+    _dismissKeyboard();
     final text = _controller.text.trim();
     if (text.isEmpty) {
       setState(() => _error = 'Hãy nhập văn bản tiếng Hàn cần kiểm tra.');
@@ -64,69 +72,77 @@ class _HonorificsScreenState extends State<HonorificsScreen> {
         title: const Text('Honorifics Analyzer'),
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Text(
-              'KIỂM TRA KÍNH NGỮ',
-              style: GoogleFonts.jetBrainsMono(
-                fontSize: 10,
-                color: AppTheme.textSecondary,
-                letterSpacing: 1,
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _controller,
-              maxLines: 5,
-              maxLength: 1500,
-              onChanged: (_) {
-                if (_analysis != null || _error != null)
-                  setState(() {
-                    _analysis = null;
-                    _error = null;
-                  });
-              },
-              style: GoogleFonts.inter(
-                color: AppTheme.textPrimary,
-                height: 1.55,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Nhập văn bản tiếng Hàn cần kiểm tra...',
-                hintStyle: GoogleFonts.inter(color: AppTheme.textSecondary),
-                filled: true,
-                fillColor: AppTheme.surface,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTap: _dismissKeyboard,
+          child: ListView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            padding: const EdgeInsets.all(16),
+            children: [
+              Text(
+                'KIỂM TRA KÍNH NGỮ',
+                style: GoogleFonts.jetBrainsMono(
+                  fontSize: 10,
+                  color: AppTheme.textSecondary,
+                  letterSpacing: 1,
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            ElevatedButton.icon(
-              onPressed: _loading ? null : _analyze,
-              icon: _loading
-                  ? const SizedBox.square(
-                      dimension: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.black,
-                      ),
-                    )
-                  : const Icon(Icons.auto_awesome, size: 17),
-              label: Text(
-                _loading ? 'Đang phân tích...' : '분석하기 (Phân tích)',
-                style: GoogleFonts.outfit(fontWeight: FontWeight.w700),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _controller,
+                focusNode: _inputFocusNode,
+                maxLines: 5,
+                maxLength: 1500,
+                textInputAction: TextInputAction.done,
+                onEditingComplete: _dismissKeyboard,
+                onChanged: (_) {
+                  if (_analysis != null || _error != null)
+                    setState(() {
+                      _analysis = null;
+                      _error = null;
+                    });
+                },
+                style: GoogleFonts.inter(
+                  color: AppTheme.textPrimary,
+                  height: 1.55,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Nhập văn bản tiếng Hàn cần kiểm tra...',
+                  hintStyle: GoogleFonts.inter(color: AppTheme.textSecondary),
+                  filled: true,
+                  fillColor: AppTheme.surface,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
               ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primary,
-                foregroundColor: Colors.black,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+              const SizedBox(height: 10),
+              ElevatedButton.icon(
+                onPressed: _loading ? null : _analyze,
+                icon: _loading
+                    ? const SizedBox.square(
+                        dimension: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.black,
+                        ),
+                      )
+                    : const Icon(Icons.auto_awesome, size: 17),
+                label: Text(
+                  _loading ? 'Đang phân tích...' : '분석하기 (Phân tích)',
+                  style: GoogleFonts.outfit(fontWeight: FontWeight.w700),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primary,
+                  foregroundColor: Colors.black,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
               ),
-            ),
-            if (_error != null) _messageCard(_error!, Colors.redAccent),
-            if (analysis != null) ...[_result(analysis)],
-          ],
+              if (_error != null) _messageCard(_error!, Colors.redAccent),
+              if (analysis != null) ...[_result(analysis)],
+            ],
+          ),
         ),
       ),
     );
@@ -189,6 +205,32 @@ class _HonorificsScreenState extends State<HonorificsScreen> {
                       style: GoogleFonts.inter(
                         fontSize: 12,
                         color: AppTheme.textSecondary,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 7,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color:
+                            (analysis.analysisSource == 'ai_fallback'
+                                    ? AppTheme.primary
+                                    : AppTheme.textSecondary)
+                                .withValues(alpha: .14),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        analysis.analysisSource == 'ai_fallback'
+                            ? 'Gemini AI'
+                            : 'Quy tắc',
+                        style: GoogleFonts.jetBrainsMono(
+                          fontSize: 9,
+                          color: analysis.analysisSource == 'ai_fallback'
+                              ? AppTheme.primary
+                              : AppTheme.textSecondary,
+                        ),
                       ),
                     ),
                   ],

@@ -8,6 +8,7 @@ export const Layout: React.FC = () => {
 
   const handleLogout = () => {
     localStorage.removeItem('kapor_admin_token');
+    localStorage.removeItem('kapor_admin_refresh_token');
     navigate('/login');
   };
 

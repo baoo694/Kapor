@@ -27,12 +27,14 @@ class HonorificAnalysis {
   const HonorificAnalysis({
     required this.currentLevel,
     required this.confidence,
+    required this.analysisSource,
     required this.corrections,
     required this.transformedText,
   });
 
   final String currentLevel;
   final double confidence;
+  final String analysisSource;
   final List<CorrectionDiff> corrections;
   final String transformedText;
 
@@ -41,6 +43,7 @@ class HonorificAnalysis {
     return HonorificAnalysis(
       currentLevel: json['currentLevel']?.toString() ?? 'banmal',
       confidence: (json['confidence'] as num?)?.toDouble() ?? 0,
+      analysisSource: json['analysisSource']?.toString() ?? 'rule_based',
       corrections: rawCorrections is List
           ? rawCorrections
                 .whereType<Map>()

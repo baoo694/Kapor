@@ -3,6 +3,11 @@ com/kapor/video/service/VideoServiceSubtitleTest$1.class
 com/kapor/common/exception/GlobalExceptionHandlerTest.class
 com/kapor/common/dto/ApiResponseTest$ErrorResponses.class
 com/kapor/video/service/GeminiSubtitleServiceTest.class
+com/kapor/video/service/VideoServiceSubtitleTest$3.class
+com/kapor/auth/controller/AuthControllerTest$RefreshToken.class
 com/kapor/common/dto/ApiResponseTest.class
+com/kapor/analytics/service/ActivityTrackingServiceTest.class
+com/kapor/analytics/service/AnalyticsServiceTest.class
 com/kapor/BaseIntegrationTest.class
 com/kapor/video/service/VideoServiceSubtitleTest.class
+com/kapor/video/service/VideoServiceSubtitleTest$2.class

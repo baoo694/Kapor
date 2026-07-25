@@ -15,6 +15,9 @@ class VideoScreen extends StatefulWidget {
 }
 
 class _VideoScreenState extends State<VideoScreen> {
+  static const _videoTeal = Color(0xFF2DD4BF);
+  static const _videoAmber = Color(0xFFFBBF24);
+
   final _service = VideoService();
   late Future<List<LearningVideo>> _videosFuture;
   LearningVideo? _video;
@@ -24,6 +27,7 @@ class _VideoScreenState extends State<VideoScreen> {
   double _position = 0;
   double _durationSeconds = 0;
   double _playbackRate = 1;
+  bool _isPlaying = false;
   final Set<String> _completedQuizzes = {};
   String? _error;
 
@@ -53,8 +57,16 @@ class _VideoScreenState extends State<VideoScreen> {
     final player = YoutubePlayerController.fromVideoId(
       videoId: video.youtubeVideoId,
       params: const YoutubePlayerParams(
-        showControls: true,
-        showFullscreenButton: true,
+        // The learning controls below are the single source of playback UI.
+        // Hiding YouTube's own chrome keeps the experience consistent on every
+        // platform and with the Video Lab design.
+        showControls: false,
+        showFullscreenButton: false,
+        enableCaption: false,
+        enableKeyboard: false,
+        showVideoAnnotations: false,
+        strictRelatedVideos: true,
+        pointerEvents: PointerEvents.none,
         playsInline: true,
         privacyEnhancedMode: false,
         // Android WebView has no Referer by default. Identify this installed
@@ -64,8 +76,9 @@ class _VideoScreenState extends State<VideoScreen> {
       autoPlay: true,
     );
     _positionSubscription = player.videoStateStream.listen((state) {
-      if (mounted)
+      if (mounted) {
         setState(() => _position = state.position.inMilliseconds / 1000);
+      }
     });
     _playerValueSubscription = player.stream.listen((value) {
       debugPrint(
@@ -82,6 +95,10 @@ class _VideoScreenState extends State<VideoScreen> {
       if (mounted && value.playbackRate != _playbackRate) {
         setState(() => _playbackRate = value.playbackRate);
       }
+      final isPlaying = value.playerState == PlayerState.playing;
+      if (mounted && isPlaying != _isPlaying) {
+        setState(() => _isPlaying = isPlaying);
+      }
     });
     setState(() {
       _video = video;
@@ -89,40 +106,58 @@ class _VideoScreenState extends State<VideoScreen> {
       _position = 0;
       _durationSeconds = video.durationSeconds.toDouble();
       _playbackRate = 1;
+      _isPlaying = true;
       _error = null;
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: context.pop,
+    final isWatchingVideo = _video != null;
+    return PopScope(
+      canPop: !isWatchingVideo,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && isWatchingVideo) {
+          _goHome();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.background,
+        appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: isWatchingVideo ? _goHome : context.pop,
+          ),
+          title: Text(_video == null ? 'Video Lab' : _video!.title),
         ),
-        title: Text(_video == null ? 'Video Lab' : _video!.title),
+        body: SafeArea(child: _video == null ? _library() : _playerView()),
       ),
-      body: SafeArea(child: _video == null ? _library() : _playerView()),
     );
+  }
+
+  void _goHome() {
+    _player?.pauseVideo();
+    context.go('/dashboard');
   }
 
   Widget _library() => FutureBuilder<List<LearningVideo>>(
     future: _videosFuture,
     builder: (context, snapshot) {
-      if (snapshot.connectionState != ConnectionState.done)
+      if (snapshot.connectionState != ConnectionState.done) {
         return const Center(child: CircularProgressIndicator());
-      if (snapshot.hasError)
+      }
+      if (snapshot.hasError) {
         return _centerMessage(
           snapshot.error.toString().replaceFirst('Exception: ', ''),
           retry: () => setState(() => _videosFuture = _service.getVideos()),
         );
+      }
       final videos = snapshot.data ?? const [];
-      if (videos.isEmpty)
+      if (videos.isEmpty) {
         return _centerMessage(
           'Chưa có video. Hãy thêm nội dung từ Admin Panel.',
         );
+      }
       return ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -180,31 +215,46 @@ class _VideoScreenState extends State<VideoScreen> {
       children: [
         AspectRatio(
           aspectRatio: 16 / 9,
-          child: YoutubePlayer(controller: _player!),
+          child: YoutubePlayer(
+            controller: _player!,
+            // Android renders the YouTube iframe in a platform view, which
+            // sits above an ordinary Flutter Stack. `controlsBuilder` is
+            // rendered by the player's overlay portal, so subtitles remain
+            // visible above the video on Android as well as web/iOS.
+            autoFullScreen: false,
+            enableFullScreenOnVerticalDrag: false,
+            controlsBuilder: (context, isFullscreen) {
+              if (isFullscreen || (korean == null && vietnamese == null)) {
+                return const SizedBox.shrink();
+              }
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                child: _subtitleOverlay(korean, vietnamese),
+              );
+            },
+          ),
+        ),
+        Container(
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(color: Colors.white.withValues(alpha: .06)),
+            ),
+          ),
+          padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+          child: _videoControls(
+            duration: duration,
+            subtitleIndex: subtitleIndex,
+            canGoPrevious: canGoPrevious,
+            canGoNext: canGoNext,
+            subtitles: video.koreanSubtitles,
+            quizzes: video.quizzes,
+          ),
         ),
         Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.fromLTRB(14, 12, 14, 24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                video.titleVi,
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: AppTheme.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 14),
-              _videoControls(
-                duration: duration,
-                subtitleIndex: subtitleIndex,
-                canGoPrevious: canGoPrevious,
-                canGoNext: canGoNext,
-                subtitles: video.koreanSubtitles,
-              ),
-              const SizedBox(height: 16),
-              _subtitleCard(korean, vietnamese),
-              const SizedBox(height: 18),
               Text(
                 'TỪ VỰNG ĐOẠN NÀY',
                 style: GoogleFonts.jetBrainsMono(
@@ -221,16 +271,14 @@ class _VideoScreenState extends State<VideoScreen> {
                     .where((token) => token.clickable)
                     .map(
                       (token) => ActionChip(
-                        backgroundColor: AppTheme.primary.withValues(
-                          alpha: .12,
-                        ),
+                        backgroundColor: _videoTeal.withValues(alpha: .12),
                         side: BorderSide(
-                          color: AppTheme.primary.withValues(alpha: .4),
+                          color: _videoTeal.withValues(alpha: .4),
                         ),
                         label: Text(
                           token.surface,
                           style: GoogleFonts.outfit(
-                            color: AppTheme.primary,
+                            color: _videoTeal,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -292,9 +340,23 @@ class _VideoScreenState extends State<VideoScreen> {
     await _player?.seekTo(seconds: target, allowSeekAhead: true);
   }
 
+  void _seekFromTrackPosition(double dx, double width, double duration) {
+    if (width <= 0 || duration <= 0) return;
+    final fraction = (dx / width).clamp(0.0, 1.0).toDouble();
+    _seekTo(fraction * duration);
+  }
+
   Future<void> _setPlaybackRate(double rate) async {
     setState(() => _playbackRate = rate);
     await _player?.setPlaybackRate(rate);
+  }
+
+  Future<void> _togglePlayback() async {
+    if (_isPlaying) {
+      await _player?.pauseVideo();
+    } else {
+      await _player?.playVideo();
+    }
   }
 
   Widget _videoControls({
@@ -303,62 +365,210 @@ class _VideoScreenState extends State<VideoScreen> {
     required bool canGoPrevious,
     required bool canGoNext,
     required List<VideoSubtitle> subtitles,
+    required List<VideoQuiz> quizzes,
   }) => Column(
     children: [
-      Slider(
-        value: (duration > 0 ? _position.clamp(0, duration) : 0).toDouble(),
-        min: 0,
-        max: duration > 0 ? duration : 1,
-        onChanged: duration > 0 ? (value) => _seekTo(value) : null,
-        semanticFormatterCallback: _formatVideoTime,
-      ),
-      Row(
-        children: [
-          Text(
-            '${_formatVideoTime(_position)} / ${_formatVideoTime(duration)}',
-            style: GoogleFonts.jetBrainsMono(
-              fontSize: 12,
-              color: AppTheme.textSecondary,
-            ),
-          ),
-          const Spacer(),
-          ...[.75, 1.0, 1.25].map(
-            (rate) => Padding(
-              padding: const EdgeInsets.only(left: 5),
-              child: ChoiceChip(
-                label: Text(rate == 1 ? '1×' : '$rate×'),
-                selected: _playbackRate == rate,
-                onSelected: (_) => _setPlaybackRate(rate),
-              ),
-            ),
-          ),
-        ],
-      ),
+      _progressBar(duration: duration, quizzes: quizzes),
       const SizedBox(height: 10),
       Row(
         children: [
-          Expanded(
-            child: OutlinedButton.icon(
-              onPressed: canGoPrevious
-                  ? () => _seekTo(subtitles[subtitleIndex - 1].start)
-                  : null,
-              icon: const Icon(Icons.arrow_back),
-              label: const Text('Trước'),
+          Tooltip(
+            message: _isPlaying ? 'Tạm dừng' : 'Phát video',
+            child: Material(
+              color: _videoTeal,
+              shape: const CircleBorder(),
+              child: InkWell(
+                onTap: _togglePlayback,
+                customBorder: const CircleBorder(),
+                child: SizedBox(
+                  width: 32,
+                  height: 32,
+                  child: Icon(
+                    _isPlaying ? Icons.pause : Icons.play_arrow,
+                    size: 15,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
-            child: FilledButton.icon(
-              onPressed: canGoNext
-                  ? () => _seekTo(subtitles[subtitleIndex + 1].start)
-                  : null,
-              icon: const Icon(Icons.arrow_forward),
-              label: const Text('Tiếp'),
+            child: Text(
+              '${_formatVideoTime(_position)} / ${_formatVideoTime(duration)}',
+              style: GoogleFonts.jetBrainsMono(
+                fontSize: 10,
+                color: const Color(0xFF64748B),
+              ),
+            ),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [.75, 1.0, 1.25]
+                .map(
+                  (rate) => Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: _speedButton(rate),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
+      ),
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          Expanded(
+            child: _subtitleNavigationButton(
+              label: '← Trước',
+              enabled: canGoPrevious,
+              onTap: () => _seekTo(subtitles[subtitleIndex - 1].start),
+            ),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: _subtitleNavigationButton(
+              label: 'Tiếp →',
+              enabled: canGoNext,
+              onTap: () => _seekTo(subtitles[subtitleIndex + 1].start),
             ),
           ),
         ],
       ),
     ],
+  );
+
+  Widget _progressBar({
+    required double duration,
+    required List<VideoQuiz> quizzes,
+  }) {
+    final progress = duration > 0
+        ? (_position / duration).clamp(0.0, 1.0).toDouble()
+        : 0.0;
+    return LayoutBuilder(
+      builder: (context, constraints) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTapDown: duration > 0
+            ? (details) => _seekFromTrackPosition(
+                details.localPosition.dx,
+                constraints.maxWidth,
+                duration,
+              )
+            : null,
+        onHorizontalDragUpdate: duration > 0
+            ? (details) => _seekFromTrackPosition(
+                details.localPosition.dx,
+                constraints.maxWidth,
+                duration,
+              )
+            : null,
+        child: SizedBox(
+          height: 12,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(99),
+                  child: SizedBox(
+                    height: 6,
+                    width: double.infinity,
+                    child: Stack(
+                      children: [
+                        const ColoredBox(color: Color(0xFF122131)),
+                        FractionallySizedBox(
+                          widthFactor: progress,
+                          child: const ColoredBox(color: _videoTeal),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              ...quizzes
+                  .where((quiz) => duration > 0 && quiz.timestamp <= duration)
+                  .map((quiz) {
+                    final markerPosition = (quiz.timestamp / duration)
+                        .clamp(0.0, 1.0)
+                        .toDouble();
+                    final passed = quiz.timestamp <= _position;
+                    return Positioned(
+                      left: constraints.maxWidth * markerPosition - 6,
+                      top: 0,
+                      child: Tooltip(
+                        message:
+                            'Câu hỏi tại ${_formatVideoTime(quiz.timestamp)}',
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: passed
+                                ? const Color(0xFF34D399)
+                                : _videoAmber,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.black, width: 2),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _speedButton(double rate) {
+    final selected = _playbackRate == rate;
+    final label = rate == 1 ? '1×' : '$rate×';
+    return Material(
+      color: selected ? _videoTeal : const Color(0xFF122131),
+      borderRadius: BorderRadius.circular(5),
+      child: InkWell(
+        onTap: () => _setPlaybackRate(rate),
+        borderRadius: BorderRadius.circular(5),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+          child: Text(
+            label,
+            style: GoogleFonts.jetBrainsMono(
+              color: selected ? Colors.black : const Color(0xFF64748B),
+              fontSize: 9,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _subtitleNavigationButton({
+    required String label,
+    required bool enabled,
+    required VoidCallback onTap,
+  }) => Material(
+    color: const Color(0xFF0E1B2B),
+    borderRadius: BorderRadius.circular(8),
+    child: InkWell(
+      onTap: enabled ? onTap : null,
+      borderRadius: BorderRadius.circular(8),
+      child: SizedBox(
+        height: 36,
+        child: Center(
+          child: Text(
+            label,
+            style: GoogleFonts.jetBrainsMono(
+              color: enabled
+                  ? const Color(0xFF8A9AAD)
+                  : const Color(0xFF4B5A6B),
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    ),
   );
 
   String _formatVideoTime(double seconds) {
@@ -369,32 +579,66 @@ class _VideoScreenState extends State<VideoScreen> {
     return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
-  Widget _subtitleCard(VideoSubtitle? korean, VideoSubtitle? vietnamese) =>
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.black87,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            Text(
-              korean?.text ?? '…',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.outfit(
-                fontSize: 19,
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
+  Widget _subtitleOverlay(VideoSubtitle? korean, VideoSubtitle? vietnamese) =>
+      Align(
+        alignment: Alignment.bottomCenter,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: .75),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Wrap(
+                alignment: WrapAlignment.center,
+                spacing: 4,
+                runSpacing: 2,
+                children: (korean?.tokens ?? const [])
+                    .map(
+                      (token) => TextButton(
+                        onPressed: token.clickable
+                            ? () => _showWord(token)
+                            : null,
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          minimumSize: Size.zero,
+                          padding: EdgeInsets.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          textStyle: GoogleFonts.outfit(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            decoration: TextDecoration.underline,
+                            decorationStyle: TextDecorationStyle.dotted,
+                            decorationColor: Colors.white54,
+                          ),
+                        ),
+                        child: Text(token.surface),
+                      ),
+                    )
+                    .toList(),
               ),
-            ),
-            const SizedBox(height: 5),
-            Text(
-              vietnamese?.text ?? '',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.inter(fontSize: 12, color: Colors.white70),
-            ),
-          ],
+              if ((korean?.tokens ?? const []).isEmpty)
+                Text(
+                  korean?.text ?? '…',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.outfit(
+                    fontSize: 14,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              if ((vietnamese?.text ?? '').isNotEmpty) ...[
+                const SizedBox(height: 3),
+                Text(
+                  vietnamese!.text,
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.inter(fontSize: 10, color: Colors.white60),
+                ),
+              ],
+            ],
+          ),
         ),
       );
   void _showWord(VideoToken token) {
@@ -446,7 +690,7 @@ class _VideoScreenState extends State<VideoScreen> {
                     quiz.id,
                     index,
                   );
-                  if (mounted)
+                  if (mounted) {
                     ScaffoldMessenger.of(this.context).showSnackBar(
                       SnackBar(
                         content: Text(
@@ -456,9 +700,11 @@ class _VideoScreenState extends State<VideoScreen> {
                         ),
                       ),
                     );
+                  }
                 } catch (_) {
-                  if (mounted)
+                  if (mounted) {
                     setState(() => _error = 'Không thể gửi đáp án quiz.');
+                  }
                 }
               },
             ),

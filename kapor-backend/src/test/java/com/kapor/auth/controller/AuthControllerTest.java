@@ -4,6 +4,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.kapor.auth.dto.GoogleLoginRequest;
 import com.kapor.auth.service.GoogleAuthService;
+import com.kapor.auth.security.CustomUserDetails;
+import com.kapor.auth.security.JwtService;
+import com.kapor.TestDataFactory;
 import com.kapor.user.model.User;
 import com.kapor.user.repository.UserRepository;
 import org.junit.jupiter.api.*;
@@ -45,12 +48,56 @@ class AuthControllerTest {
     @Autowired
     private UserRepository userRepository;
 
+    @Autowired
+    private JwtService jwtService;
+
     @MockitoBean
     private GoogleAuthService googleAuthService;
 
     @AfterEach
     void cleanUp() {
         userRepository.deleteAll();
+    }
+
+    @Nested
+    @DisplayName("POST /api/auth/refresh")
+    class RefreshToken {
+
+        @Test
+        @DisplayName("should rotate a valid refresh token and return a new token pair")
+        void shouldRotateValidRefreshToken() throws Exception {
+            User user = userRepository.save(TestDataFactory.createTestUser());
+            String currentRefreshToken = jwtService.generateRefreshToken(new CustomUserDetails(user));
+            user.setRefreshToken(currentRefreshToken);
+            user.setRefreshTokenExpiry(java.time.Instant.now().plusSeconds(60));
+            userRepository.save(user);
+
+            mockMvc.perform(post("/api/auth/refresh")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(java.util.Map.of("refreshToken", currentRefreshToken))))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success").value(true))
+                    .andExpect(jsonPath("$.data.accessToken").isNotEmpty())
+                    .andExpect(jsonPath("$.data.refreshToken").isNotEmpty());
+
+            User refreshedUser = userRepository.findByEmail(user.getEmail()).orElseThrow();
+            assertThat(refreshedUser.getRefreshToken()).isNotEqualTo(currentRefreshToken);
+
+            mockMvc.perform(post("/api/auth/refresh")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(java.util.Map.of("refreshToken", currentRefreshToken))))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        @Test
+        @DisplayName("should reject an invalid refresh token")
+        void shouldRejectInvalidRefreshToken() throws Exception {
+            mockMvc.perform(post("/api/auth/refresh")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"refreshToken\":\"invalid-token\"}"))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.success").value(false));
+        }
     }
 
     private GoogleIdToken.Payload createMockPayload(String email, String googleId, String name) {

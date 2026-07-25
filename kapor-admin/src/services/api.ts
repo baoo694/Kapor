@@ -97,15 +97,71 @@ const getHeaders = () => {
   };
 };
 
-// Helper to unwrap standard ApiResponse { success, data, message }
-const handleResponse = async (res: Response) => {
-  if (res.status === 401 || res.status === 403) {
-    localStorage.removeItem('kapor_admin_token');
-    localStorage.removeItem('kapor_admin_refresh_token');
-    window.location.reload();
-    throw new Error('Unauthorized access, please login again.');
+const clearAuthTokens = () => {
+  localStorage.removeItem('kapor_admin_token');
+  localStorage.removeItem('kapor_admin_refresh_token');
+};
+
+let refreshPromise: Promise<boolean> | null = null;
+
+const refreshAccessToken = async (): Promise<boolean> => {
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    const refreshToken = localStorage.getItem('kapor_admin_refresh_token');
+    if (!refreshToken) return false;
+
+    try {
+      const response = await fetch(`${API_BASE}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken })
+      });
+      const payload = await response.json();
+      const tokens = payload?.data;
+
+      if (!response.ok || !payload?.success || !tokens?.accessToken || !tokens?.refreshToken) {
+        return false;
+      }
+
+      localStorage.setItem('kapor_admin_token', tokens.accessToken);
+      localStorage.setItem('kapor_admin_refresh_token', tokens.refreshToken);
+      return true;
+    } catch {
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+};
+
+const fetchWithAuth = async (url: string, init: RequestInit = {}): Promise<Response> => {
+  const makeRequest = () => {
+    const headers = new Headers(init.headers);
+    const token = localStorage.getItem('kapor_admin_token');
+    if (token) {
+      headers.set('Authorization', `Bearer ${token}`);
+    }
+    return fetch(url, { ...init, headers });
+  };
+
+  let response = await makeRequest();
+  if (response.status === 401 && await refreshAccessToken()) {
+    response = await makeRequest();
   }
 
+  if (response.status === 401 || response.status === 403) {
+    clearAuthTokens();
+    window.location.reload();
+  }
+
+  return response;
+};
+
+// Helper to unwrap standard ApiResponse { success, data, message }
+const handleResponse = async (res: Response) => {
   if (!res.ok) {
     let message = 'API request failed';
     try {
@@ -136,7 +192,7 @@ export const api = {
   // Users API
   getUsers: async (page = 1, search = '') => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/users?page=${page}&search=${search}`, { headers: getHeaders() });
+      const res = await fetchWithAuth(`${API_BASE}/api/admin/users?page=${page}&search=${search}`, { headers: getHeaders() });
       return await handleResponse(res);
     } catch (e) {
       console.warn("getUsers failed, probably not implemented yet.", e);
@@ -145,7 +201,7 @@ export const api = {
   },
   
   updateUserRole: async (id: string, role: string) => {
-    const res = await fetch(`${API_BASE}/api/admin/users/${id}/role`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/users/${id}/role`, {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify({ role })
@@ -154,7 +210,7 @@ export const api = {
   },
   
   deleteUser: async (id: string) => {
-    const res = await fetch(`${API_BASE}/api/admin/users/${id}`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/users/${id}`, {
       method: 'DELETE',
       headers: getHeaders()
     });
@@ -162,7 +218,7 @@ export const api = {
   },
 
   createUser: async (data: { email: string; password: string; name: string; role?: string }) => {
-    const res = await fetch(`${API_BASE}/api/admin/users`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/users`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(data)
@@ -173,12 +229,12 @@ export const api = {
   // Topics API
   getAdminTopics: async (domain?: string): Promise<AdminTopicPayload[]> => {
     const query = domain ? `?domain=${encodeURIComponent(domain)}` : '';
-    const res = await fetch(`${API_BASE}/api/admin/topics${query}`, { headers: getHeaders() });
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/topics${query}`, { headers: getHeaders() });
     return handleResponse(res);
   },
 
   createAdminTopic: async (data: AdminTopicPayload): Promise<AdminTopicPayload> => {
-    const res = await fetch(`${API_BASE}/api/admin/topics`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/topics`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(data)
@@ -187,7 +243,7 @@ export const api = {
   },
 
   updateAdminTopic: async (id: string, data: AdminTopicPayload): Promise<AdminTopicPayload> => {
-    const res = await fetch(`${API_BASE}/api/admin/topics/${id}`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/topics/${id}`, {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify(data)
@@ -196,7 +252,7 @@ export const api = {
   },
 
   deleteAdminTopic: async (id: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/api/admin/topics/${id}`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/topics/${id}`, {
       method: 'DELETE',
       headers: getHeaders()
     });
@@ -206,12 +262,12 @@ export const api = {
   // Lessons API
   getAdminLessons: async (topicId?: string): Promise<AdminLessonPayload[]> => {
     const query = topicId ? `?topicId=${encodeURIComponent(topicId)}` : '';
-    const res = await fetch(`${API_BASE}/api/admin/lessons${query}`, { headers: getHeaders() });
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/lessons${query}`, { headers: getHeaders() });
     return handleResponse(res);
   },
 
   createAdminLesson: async (data: AdminLessonPayload): Promise<AdminLessonPayload> => {
-    const res = await fetch(`${API_BASE}/api/admin/lessons`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/lessons`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(data)
@@ -220,7 +276,7 @@ export const api = {
   },
 
   updateAdminLesson: async (id: string, data: AdminLessonPayload): Promise<AdminLessonPayload> => {
-    const res = await fetch(`${API_BASE}/api/admin/lessons/${id}`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/lessons/${id}`, {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify(data)
@@ -229,7 +285,7 @@ export const api = {
   },
 
   deleteAdminLesson: async (id: string): Promise<void> => {
-    const res = await fetch(`${API_BASE}/api/admin/lessons/${id}`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/lessons/${id}`, {
       method: 'DELETE',
       headers: getHeaders()
     });
@@ -237,10 +293,10 @@ export const api = {
   },
 
   // Videos (Mapping to Documents/Resources for this admin dashboard)
-  getVideos: async (): Promise<AdminVideoPayload[]> => handleResponse(await fetch(`${API_BASE}/api/admin/videos`, { headers: getHeaders() })),
+  getVideos: async (): Promise<AdminVideoPayload[]> => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/videos`, { headers: getHeaders() })),
 
   createVideo: async (video: any) => {
-    const res = await fetch(`${API_BASE}/api/admin/videos`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/videos`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(video)
@@ -249,7 +305,7 @@ export const api = {
   },
 
   updateVideo: async (id: string, video: any) => {
-    const res = await fetch(`${API_BASE}/api/admin/videos/${id}`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/videos/${id}`, {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify(video)
@@ -258,7 +314,7 @@ export const api = {
   },
 
   updateVideoSubtitles: async (id: string, subtitles: SubtitleUpdatePayload): Promise<AdminVideoPayload> => {
-    const res = await fetch(`${API_BASE}/api/admin/videos/${id}/subtitles`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/videos/${id}/subtitles`, {
       method: 'PUT',
       headers: getHeaders(),
       body: JSON.stringify(subtitles)
@@ -267,7 +323,7 @@ export const api = {
   },
 
   tokenizeVideoSubtitles: async (id: string, subtitles: SubtitleTokenizePayload): Promise<AdminVideoPayload> => {
-    const res = await fetch(`${API_BASE}/api/admin/videos/${id}/subtitles/tokenize`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/videos/${id}/subtitles/tokenize`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(subtitles)
@@ -276,7 +332,7 @@ export const api = {
   },
 
   tokenizeVideoSubtitlesWithAi: async (id: string, subtitles: SubtitleTokenizePayload): Promise<AdminVideoPayload> => {
-    const res = await fetch(`${API_BASE}/api/admin/videos/${id}/subtitles/ai-tokenize`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/videos/${id}/subtitles/ai-tokenize`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(subtitles)
@@ -285,7 +341,7 @@ export const api = {
   },
 
   translateVideoSubtitlesWithAi: async (id: string, subtitles: SubtitleTokenizePayload): Promise<AdminVideoPayload> => {
-    const res = await fetch(`${API_BASE}/api/admin/videos/${id}/subtitles/translate`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/videos/${id}/subtitles/translate`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(subtitles)
@@ -294,7 +350,7 @@ export const api = {
   },
 
   analyzeVideoSubtitlesWithAi: async (id: string, subtitles: SubtitleTokenizePayload): Promise<AdminVideoPayload> => {
-    const res = await fetch(`${API_BASE}/api/admin/videos/${id}/subtitles/ai-analyze`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/videos/${id}/subtitles/ai-analyze`, {
       method: 'POST',
       headers: getHeaders(),
       body: JSON.stringify(subtitles)
@@ -303,36 +359,36 @@ export const api = {
   },
 
   deleteVideo: async (id: string) => {
-    const res = await fetch(`${API_BASE}/api/admin/videos/${id}`, {
+    const res = await fetchWithAuth(`${API_BASE}/api/admin/videos/${id}`, {
       method: 'DELETE',
       headers: getHeaders()
     });
     return handleResponse(res);
   },
 
-  getScenarios: async (): Promise<AdminScenarioPayload[]> => handleResponse(await fetch(`${API_BASE}/api/admin/scenarios`, { headers: getHeaders() })),
-  createScenario: async (data: AdminScenarioPayload) => handleResponse(await fetch(`${API_BASE}/api/admin/scenarios`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) })),
-  updateScenario: async (id: string, data: AdminScenarioPayload) => handleResponse(await fetch(`${API_BASE}/api/admin/scenarios/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) })),
-  deleteScenario: async (id: string) => handleResponse(await fetch(`${API_BASE}/api/admin/scenarios/${id}`, { method: 'DELETE', headers: getHeaders() })),
+  getScenarios: async (): Promise<AdminScenarioPayload[]> => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/scenarios`, { headers: getHeaders() })),
+  createScenario: async (data: AdminScenarioPayload) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/scenarios`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) })),
+  updateScenario: async (id: string, data: AdminScenarioPayload) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/scenarios/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) })),
+  deleteScenario: async (id: string) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/scenarios/${id}`, { method: 'DELETE', headers: getHeaders() })),
 
-  getDictionary: async (query = ''): Promise<AdminDictionaryPayload[]> => handleResponse(await fetch(`${API_BASE}/api/admin/dictionary${query ? `?query=${encodeURIComponent(query)}` : ''}`, { headers: getHeaders() })),
-  createDictionary: async (data: AdminDictionaryPayload) => handleResponse(await fetch(`${API_BASE}/api/admin/dictionary`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) })),
-  updateDictionary: async (id: string, data: AdminDictionaryPayload) => handleResponse(await fetch(`${API_BASE}/api/admin/dictionary/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) })),
-  deleteDictionary: async (id: string) => handleResponse(await fetch(`${API_BASE}/api/admin/dictionary/${id}`, { method: 'DELETE', headers: getHeaders() })),
-  importDictionary: async (data: AdminDictionaryPayload[]) => handleResponse(await fetch(`${API_BASE}/api/admin/dictionary/import`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) })),
+  getDictionary: async (query = ''): Promise<AdminDictionaryPayload[]> => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/dictionary${query ? `?query=${encodeURIComponent(query)}` : ''}`, { headers: getHeaders() })),
+  createDictionary: async (data: AdminDictionaryPayload) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/dictionary`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) })),
+  updateDictionary: async (id: string, data: AdminDictionaryPayload) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/dictionary/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) })),
+  deleteDictionary: async (id: string) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/dictionary/${id}`, { method: 'DELETE', headers: getHeaders() })),
+  importDictionary: async (data: AdminDictionaryPayload[]) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/dictionary/import`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) })),
 
-  getPronunciationExercises: async (): Promise<AdminPronunciationPayload[]> => handleResponse(await fetch(`${API_BASE}/api/admin/pronunciation-exercises`, { headers: getHeaders() })),
-  createPronunciationExercise: async (data: AdminPronunciationPayload) => handleResponse(await fetch(`${API_BASE}/api/admin/pronunciation-exercises`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) })),
-  updatePronunciationExercise: async (id: string, data: AdminPronunciationPayload) => handleResponse(await fetch(`${API_BASE}/api/admin/pronunciation-exercises/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) })),
-  deletePronunciationExercise: async (id: string) => handleResponse(await fetch(`${API_BASE}/api/admin/pronunciation-exercises/${id}`, { method: 'DELETE', headers: getHeaders() })),
+  getPronunciationExercises: async (): Promise<AdminPronunciationPayload[]> => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/pronunciation-exercises`, { headers: getHeaders() })),
+  createPronunciationExercise: async (data: AdminPronunciationPayload) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/pronunciation-exercises`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) })),
+  updatePronunciationExercise: async (id: string, data: AdminPronunciationPayload) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/pronunciation-exercises/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) })),
+  deletePronunciationExercise: async (id: string) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/pronunciation-exercises/${id}`, { method: 'DELETE', headers: getHeaders() })),
 
-  getPrompts: async (): Promise<AdminPromptPayload[]> => handleResponse(await fetch(`${API_BASE}/api/admin/prompts`, { headers: getHeaders() })),
-  createPrompt: async (data: AdminPromptPayload) => handleResponse(await fetch(`${API_BASE}/api/admin/prompts`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) })),
-  updatePrompt: async (id: string, data: AdminPromptPayload) => handleResponse(await fetch(`${API_BASE}/api/admin/prompts/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) })),
-  getAdmins: async () => handleResponse(await fetch(`${API_BASE}/api/admin/admins`, { headers: getHeaders() })),
-  grantAdmin: async (email: string) => handleResponse(await fetch(`${API_BASE}/api/admin/admins`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ email }) })),
-  revokeAdmin: async (id: string) => handleResponse(await fetch(`${API_BASE}/api/admin/admins/${id}`, { method: 'DELETE', headers: getHeaders() })),
+  getPrompts: async (): Promise<AdminPromptPayload[]> => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/prompts`, { headers: getHeaders() })),
+  createPrompt: async (data: AdminPromptPayload) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/prompts`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) })),
+  updatePrompt: async (id: string, data: AdminPromptPayload) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/prompts/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) })),
+  getAdmins: async () => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/admins`, { headers: getHeaders() })),
+  grantAdmin: async (email: string) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/admins`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ email }) })),
+  revokeAdmin: async (id: string) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/admins/${id}`, { method: 'DELETE', headers: getHeaders() })),
   
   // Dashboard stats
-  getDashboardStats: async () => handleResponse(await fetch(`${API_BASE}/api/admin/dashboard/stats`, { headers: getHeaders() }))
+  getDashboardStats: async () => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/dashboard/stats`, { headers: getHeaders() }))
 };

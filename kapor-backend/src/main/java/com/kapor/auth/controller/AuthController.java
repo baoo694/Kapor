@@ -2,6 +2,7 @@ package com.kapor.auth.controller;
 
 import com.kapor.auth.dto.AuthResponse;
 import com.kapor.auth.dto.GoogleLoginRequest;
+import com.kapor.auth.dto.RefreshTokenRequest;
 import com.kapor.auth.service.AuthService;
 import com.kapor.common.dto.ApiResponse;
 import jakarta.validation.Valid;
@@ -38,6 +39,13 @@ public class AuthController {
             @Valid @RequestBody com.kapor.auth.dto.LoginRequest request) {
         AuthResponse response = authService.loginWithEmail(request);
         return ResponseEntity.ok(ApiResponse.ok(response, "Login successful"));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<ApiResponse<AuthResponse>> refreshToken(
+            @Valid @RequestBody RefreshTokenRequest request) {
+        AuthResponse response = authService.refreshToken(request);
+        return ResponseEntity.ok(ApiResponse.ok(response, "Token refreshed"));
     }
 
     @PostMapping("/forgot-password")

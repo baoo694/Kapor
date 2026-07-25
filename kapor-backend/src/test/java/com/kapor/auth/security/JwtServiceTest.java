@@ -124,6 +124,15 @@ class JwtServiceTest {
         }
 
         @Test
+        @DisplayName("should only validate refresh tokens for refresh requests")
+        void shouldValidateRefreshTokenSeparately() {
+            String refreshToken = jwtService.generateRefreshToken(userDetails);
+
+            assertThat(jwtService.isTokenValid(refreshToken, userDetails)).isFalse();
+            assertThat(jwtService.isRefreshTokenValid(refreshToken, userDetails)).isTrue();
+        }
+
+        @Test
         @DisplayName("should invalidate token for different user")
         void shouldInvalidateTokenForDifferentUser() {
             String token = jwtService.generateToken(userDetails);

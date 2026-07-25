@@ -7,10 +7,13 @@ import com.kapor.auth.security.JwtService;
 import com.kapor.user.dto.UserDto;
 import com.kapor.user.model.User;
 import com.kapor.user.repository.UserRepository;
+import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -20,6 +23,7 @@ import org.springframework.mail.javamail.JavaMailSender;
 
 import java.time.Instant;
 import java.util.Collections;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Random;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +40,9 @@ public class AuthService {
     private final AuthenticationManager authenticationManager;
     private final StringRedisTemplate redisTemplate;
     private final JavaMailSender mailSender;
+
+    @Value("${jwt.refresh-token-expiration-ms}")
+    private long refreshTokenExpiration;
 
     public AuthResponse loginWithGoogle(GoogleLoginRequest request) {
         // 1. Verify Google ID token
@@ -76,7 +83,7 @@ public class AuthService {
         String refreshToken = jwtService.generateRefreshToken(userDetails);
 
         user.setRefreshToken(refreshToken);
-        user.setRefreshTokenExpiry(Instant.now().plusMillis(2592000000L)); // 30 days
+        user.setRefreshTokenExpiry(Instant.now().plusMillis(refreshTokenExpiration));
         
         userRepository.save(user);
 
@@ -113,7 +120,7 @@ public class AuthService {
         String refreshToken = jwtService.generateRefreshToken(userDetails);
 
         user.setRefreshToken(refreshToken);
-        user.setRefreshTokenExpiry(Instant.now().plusMillis(2592000000L)); // 30 days
+        user.setRefreshTokenExpiry(Instant.now().plusMillis(refreshTokenExpiration));
         
         userRepository.save(user);
 
@@ -137,7 +144,7 @@ public class AuthService {
         String refreshToken = jwtService.generateRefreshToken(userDetails);
 
         user.setRefreshToken(refreshToken);
-        user.setRefreshTokenExpiry(Instant.now().plusMillis(2592000000L)); // 30 days
+        user.setRefreshTokenExpiry(Instant.now().plusMillis(refreshTokenExpiration));
         
         userRepository.save(user);
 
@@ -147,6 +154,44 @@ public class AuthService {
                 .isNewUser(false)
                 .user(UserDto.fromEntity(user))
                 .build();
+    }
+
+    /**
+     * Rotates the refresh token and returns a new access/refresh token pair.
+     * A token must be signed, unexpired, and match the user's currently stored
+     * refresh token. This makes a refresh token single-use after rotation.
+     */
+    public AuthResponse refreshToken(RefreshTokenRequest request) {
+        try {
+            String email = jwtService.extractUsername(request.getRefreshToken());
+            User user = userRepository.findByEmail(email)
+                    .orElseThrow(() -> new BadCredentialsException("Invalid refresh token"));
+            CustomUserDetails userDetails = new CustomUserDetails(user);
+
+            boolean matchesStoredToken = Objects.equals(user.getRefreshToken(), request.getRefreshToken());
+            boolean isStoredTokenActive = user.getRefreshTokenExpiry() != null
+                    && user.getRefreshTokenExpiry().isAfter(Instant.now());
+
+            if (!matchesStoredToken || !isStoredTokenActive
+                    || !jwtService.isRefreshTokenValid(request.getRefreshToken(), userDetails)) {
+                throw new BadCredentialsException("Invalid refresh token");
+            }
+
+            String accessToken = jwtService.generateToken(userDetails);
+            String refreshToken = jwtService.generateRefreshToken(userDetails);
+            user.setRefreshToken(refreshToken);
+            user.setRefreshTokenExpiry(Instant.now().plusMillis(refreshTokenExpiration));
+            userRepository.save(user);
+
+            return AuthResponse.builder()
+                    .accessToken(accessToken)
+                    .refreshToken(refreshToken)
+                    .isNewUser(false)
+                    .user(UserDto.fromEntity(user))
+                    .build();
+        } catch (JwtException | IllegalArgumentException ex) {
+            throw new BadCredentialsException("Invalid refresh token");
+        }
     }
 
     public void forgotPassword(ForgotPasswordRequest request) {
