@@ -61,15 +61,27 @@ class PronunciationResult {
     required this.attemptId,
     required this.status,
     required this.message,
+    required this.assessmentVersion,
+    required this.assessmentProvider,
+    required this.transcriptProvider,
     required this.scores,
     required this.transcriptionText,
+    required this.transcript,
     required this.analysis,
     required this.feedback,
     required this.userWaveform,
     required this.attemptAudioUrl,
   });
-  final String attemptId, status, message, transcriptionText, attemptAudioUrl;
+  final String attemptId,
+      status,
+      message,
+      assessmentVersion,
+      assessmentProvider,
+      transcriptProvider,
+      transcriptionText,
+      attemptAudioUrl;
   final PronunciationScores? scores;
+  final PronunciationTranscript? transcript;
   final PronunciationAnalysis? analysis;
   final List<PronunciationWordFeedback> feedback;
   final List<double> userWaveform;
@@ -78,18 +90,26 @@ class PronunciationResult {
         attemptId: json['attemptId']?.toString() ?? '',
         status: json['status']?.toString() ?? '',
         message: json['message']?.toString() ?? '',
+        assessmentVersion: json['assessmentVersion']?.toString() ?? 'legacy',
+        assessmentProvider: json['assessmentProvider']?.toString() ?? 'legacy',
+        transcriptProvider: json['transcriptProvider']?.toString() ?? 'legacy',
         scores: json['scores'] is Map
             ? PronunciationScores.fromJson(
                 Map<String, dynamic>.from(json['scores'] as Map),
               )
             : null,
         transcriptionText: json['transcriptionText']?.toString() ?? '',
+        transcript: json['transcript'] is Map
+            ? PronunciationTranscript.fromJson(
+                Map<String, dynamic>.from(json['transcript'] as Map),
+              )
+            : null,
         analysis: json['analysis'] is Map
             ? PronunciationAnalysis.fromJson(
                 Map<String, dynamic>.from(json['analysis'] as Map),
               )
             : null,
-        feedback: _feedback(json['transcription']),
+        feedback: _feedback(json['assessmentWords'] ?? json['transcription']),
         userWaveform: json['userWaveform'] is List
             ? (json['userWaveform'] as List)
                   .whereType<num>()
@@ -104,6 +124,10 @@ class PronunciationResult {
     status: status,
     scores: scores,
     transcriptionText: transcriptionText,
+    transcript: transcript,
+    assessmentVersion: assessmentVersion,
+    assessmentProvider: assessmentProvider,
+    transcriptProvider: transcriptProvider,
     analysis: analysis,
     feedback: feedback,
     userWaveform: userWaveform,
@@ -129,20 +153,100 @@ class PronunciationScores {
       );
 }
 
+class PronunciationTranscript {
+  const PronunciationTranscript({
+    required this.provider,
+    required this.text,
+    required this.durationSeconds,
+    required this.words,
+  });
+  final String provider, text;
+  final double durationSeconds;
+  final List<PronunciationTranscriptWord> words;
+  factory PronunciationTranscript.fromJson(Map<String, dynamic> json) =>
+      PronunciationTranscript(
+        provider: json['provider']?.toString() ?? 'whisperx',
+        text: json['text']?.toString() ?? '',
+        durationSeconds: _double(json['durationSeconds']),
+        words: json['words'] is List
+            ? (json['words'] as List)
+                  .whereType<Map>()
+                  .map(
+                    (item) => PronunciationTranscriptWord.fromJson(
+                      Map<String, dynamic>.from(item),
+                    ),
+                  )
+                  .toList()
+            : const [],
+      );
+}
+
+class PronunciationTranscriptWord {
+  const PronunciationTranscriptWord({
+    required this.text,
+    required this.startSeconds,
+    required this.endSeconds,
+    required this.confidence,
+    required this.timingStatus,
+  });
+  final String text, timingStatus;
+  final double? startSeconds, endSeconds, confidence;
+  factory PronunciationTranscriptWord.fromJson(Map<String, dynamic> json) =>
+      PronunciationTranscriptWord(
+        text: json['text']?.toString() ?? '',
+        startSeconds: _nullableDouble(json['startSeconds']),
+        endSeconds: _nullableDouble(json['endSeconds']),
+        confidence: _nullableDouble(json['confidence']),
+        timingStatus: json['timingStatus']?.toString() ?? 'unaligned',
+      );
+}
+
 class PronunciationAnalysis {
   const PronunciationAnalysis({
+    required this.provider,
+    required this.status,
     required this.summaryVi,
     required this.correctedText,
     required this.grammarNoteVi,
+    required this.interpretations,
   });
 
-  final String summaryVi, correctedText, grammarNoteVi;
+  final String provider, status, summaryVi, correctedText, grammarNoteVi;
+  final List<PronunciationInterpretation> interpretations;
 
   factory PronunciationAnalysis.fromJson(Map<String, dynamic> json) =>
       PronunciationAnalysis(
+        provider: json['provider']?.toString() ?? 'legacy',
+        status: json['status']?.toString() ?? 'completed',
         summaryVi: json['summaryVi']?.toString() ?? '',
         correctedText: json['correctedText']?.toString() ?? '',
         grammarNoteVi: json['grammarNoteVi']?.toString() ?? '',
+        interpretations: json['interpretations'] is List
+            ? (json['interpretations'] as List)
+                  .whereType<Map>()
+                  .map(
+                    (item) => PronunciationInterpretation.fromJson(
+                      Map<String, dynamic>.from(item),
+                    ),
+                  )
+                  .toList()
+            : const [],
+      );
+}
+
+class PronunciationInterpretation {
+  const PronunciationInterpretation({
+    required this.wordIndex,
+    required this.explanationVi,
+    required this.practiceTipVi,
+  });
+  final int wordIndex;
+  final String explanationVi, practiceTipVi;
+  factory PronunciationInterpretation.fromJson(Map<String, dynamic> json) =>
+      PronunciationInterpretation(
+        wordIndex: _int(json['wordIndex']),
+        explanationVi: json['explanationVi']?.toString() ?? '',
+        practiceTipVi: json['practiceTipVi']?.toString() ?? '',
       );
 }
 
@@ -152,15 +256,33 @@ class PronunciationWordFeedback {
     required this.score,
     required this.accuracy,
     required this.phonemeDetail,
+    required this.errorType,
+    required this.phonemes,
   });
-  final String text, accuracy, phonemeDetail;
+  final String text, accuracy, phonemeDetail, errorType;
   final int score;
+  final List<PronunciationPhonemeFeedback> phonemes;
   factory PronunciationWordFeedback.fromJson(Map<String, dynamic> json) =>
       PronunciationWordFeedback(
         text: json['text']?.toString() ?? '',
         score: _int(json['score']),
         accuracy: json['accuracy']?.toString() ?? '',
         phonemeDetail: json['phonemeDetail']?.toString() ?? '',
+        errorType: json['errorType']?.toString() ?? 'None',
+        phonemes: _phonemes(json['phonemes']),
+      );
+}
+
+class PronunciationPhonemeFeedback {
+  const PronunciationPhonemeFeedback({
+    required this.index,
+    required this.score,
+  });
+  final int index, score;
+  factory PronunciationPhonemeFeedback.fromJson(Map<String, dynamic> json) =>
+      PronunciationPhonemeFeedback(
+        index: _int(json['index']),
+        score: _int(json['score']),
       );
 }
 
@@ -170,14 +292,25 @@ class PronunciationAttemptSummary {
     required this.status,
     required this.scores,
     required this.transcriptionText,
+    required this.transcript,
+    required this.assessmentVersion,
+    required this.assessmentProvider,
+    required this.transcriptProvider,
     required this.analysis,
     required this.feedback,
     required this.userWaveform,
     required this.attemptAudioUrl,
     required this.attemptedAt,
   });
-  final String id, status, transcriptionText, attemptAudioUrl;
+  final String id,
+      status,
+      transcriptionText,
+      assessmentVersion,
+      assessmentProvider,
+      transcriptProvider,
+      attemptAudioUrl;
   final PronunciationScores? scores;
+  final PronunciationTranscript? transcript;
   final PronunciationAnalysis? analysis;
   final List<PronunciationWordFeedback> feedback;
   final List<double> userWaveform;
@@ -186,18 +319,26 @@ class PronunciationAttemptSummary {
       PronunciationAttemptSummary(
         id: json['id']?.toString() ?? '',
         status: json['status']?.toString() ?? '',
+        assessmentVersion: json['assessmentVersion']?.toString() ?? 'legacy',
+        assessmentProvider: json['assessmentProvider']?.toString() ?? 'legacy',
+        transcriptProvider: json['transcriptProvider']?.toString() ?? 'legacy',
         scores: json['scores'] is Map
             ? PronunciationScores.fromJson(
                 Map<String, dynamic>.from(json['scores'] as Map),
               )
             : null,
         transcriptionText: json['transcriptionText']?.toString() ?? '',
+        transcript: json['transcript'] is Map
+            ? PronunciationTranscript.fromJson(
+                Map<String, dynamic>.from(json['transcript'] as Map),
+              )
+            : null,
         analysis: json['analysis'] is Map
             ? PronunciationAnalysis.fromJson(
                 Map<String, dynamic>.from(json['analysis'] as Map),
               )
             : null,
-        feedback: _feedback(json['transcription']),
+        feedback: _feedback(json['assessmentWords'] ?? json['transcription']),
         userWaveform: json['userWaveform'] is List
             ? (json['userWaveform'] as List)
                   .whereType<num>()
@@ -209,13 +350,28 @@ class PronunciationAttemptSummary {
       );
 }
 
-int _int(dynamic value) => value is num ? value.round().clamp(0, 100) : 0;
+int _int(dynamic value) =>
+    value is num ? value.round().clamp(0, 100).toInt() : 0;
+double _double(dynamic value) => value is num ? value.toDouble() : 0;
+double? _nullableDouble(dynamic value) =>
+    value is num ? value.toDouble() : null;
 
 List<PronunciationWordFeedback> _feedback(dynamic value) => value is List
     ? value
           .whereType<Map>()
           .map(
             (item) => PronunciationWordFeedback.fromJson(
+              Map<String, dynamic>.from(item),
+            ),
+          )
+          .toList()
+    : const [];
+
+List<PronunciationPhonemeFeedback> _phonemes(dynamic value) => value is List
+    ? value
+          .whereType<Map>()
+          .map(
+            (item) => PronunciationPhonemeFeedback.fromJson(
               Map<String, dynamic>.from(item),
             ),
           )
@@ -254,8 +410,8 @@ class PronunciationService {
         contentType: DioMediaType('audio', 'pcm'),
       ),
     });
-    // Whisper transcription plus Gemini analysis can take longer than the
-    // short default used by ordinary API requests.
+    // Azure PA and WhisperX run in parallel; Gemini only renders Vietnamese
+    // explanations after both evidence sources complete.
     final data = await _data(
       _dio.post(
         '/pronunciation/evaluate',

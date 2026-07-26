@@ -7,6 +7,7 @@ com/kapor/video/service/VideoServiceSubtitleTest$3.class
 com/kapor/auth/controller/AuthControllerTest$RefreshToken.class
 com/kapor/common/dto/ApiResponseTest.class
 com/kapor/analytics/service/ActivityTrackingServiceTest.class
+com/kapor/pronunciation/service/AzurePronunciationAssessorTest.class
 com/kapor/analytics/service/AnalyticsServiceTest.class
 com/kapor/BaseIntegrationTest.class
 com/kapor/video/service/VideoServiceSubtitleTest.class

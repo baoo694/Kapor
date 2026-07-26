@@ -101,6 +101,8 @@ class PronunciationControllerE2ETest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.status").value("completed"))
                 .andExpect(jsonPath("$.data.scores.overall").value(91))
+                .andExpect(jsonPath("$.data.assessmentVersion").value("azure-pa-whisperx-v1"))
+                .andExpect(jsonPath("$.data.assessmentWords[0].text").value("배포가"))
                 .andExpect(jsonPath("$.data.analysis.summaryVi").value("Cần đọc rõ hơn cụm 배포가."))
                 .andExpect(jsonPath("$.data.transcription[0].text").value("배포가"))
                 .andExpect(jsonPath("$.data.attemptAudioUrl").exists());

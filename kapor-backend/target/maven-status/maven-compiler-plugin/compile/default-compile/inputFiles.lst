@@ -94,14 +94,16 @@
 /Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/pronunciation/model/PronunciationExercise.java
 /Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/pronunciation/repository/PronunciationAttemptRepository.java
 /Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/pronunciation/repository/PronunciationExerciseRepository.java
+/Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/pronunciation/service/AzurePronunciationAssessor.java
+/Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/pronunciation/service/AzureWhisperXPronunciationAssessmentProvider.java
 /Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/pronunciation/service/GeminiPronunciationAnalyzer.java
 /Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/pronunciation/service/KoreanReadingMatchScorer.java
-/Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/pronunciation/service/LocalWhisperPronunciationAssessmentProvider.java
 /Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/pronunciation/service/PcmWavConverter.java
 /Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/pronunciation/service/PronunciationAssessmentProvider.java
 /Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/pronunciation/service/PronunciationAudioRetentionJob.java
 /Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/pronunciation/service/PronunciationAudioStorage.java
 /Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/pronunciation/service/PronunciationService.java
+/Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/pronunciation/service/WhisperXTranscriber.java
 /Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/techtalk/controller/RoleplayController.java
 /Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/techtalk/controller/ScenarioController.java
 /Users/quachgiabao/Kapor/kapor-backend/src/main/java/com/kapor/techtalk/dto/RoleplayHintDto.java

@@ -18,7 +18,8 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class PronunciationService {
-    private static final int MAX_RECORDING_SECONDS = 60;
+    /** Azure PA REST evaluates short scripted recordings; leave one second of headroom. */
+    private static final int MAX_RECORDING_SECONDS = 29;
     private static final Duration AUDIO_RETENTION = Duration.ofDays(7);
 
     private final PronunciationExerciseRepository exerciseRepository;
@@ -56,7 +57,8 @@ public class PronunciationService {
         String audioObjectKey = audioStorage.storeAttempt(userId, wav);
         PronunciationAttempt attempt = attemptRepository.save(PronunciationAttempt.builder()
                 .userId(userId).exerciseId(exerciseId).sentenceIndex(sentenceIndex).status("processing")
-                .provider(assessmentProvider.name()).audioObjectKey(audioObjectKey).audioContentType("audio/wav")
+                .provider(assessmentProvider.name()).assessmentVersion("azure-pa-whisperx-v1")
+                .audioObjectKey(audioObjectKey).audioContentType("audio/wav")
                 .audioDurationMs(durationMs).userWaveform(waveform(pcm)).attemptedAt(now)
                 .expiresAt(now.plus(AUDIO_RETENTION)).build());
         try {
@@ -65,10 +67,13 @@ public class PronunciationService {
             attempt.setStatus("completed");
             attempt.setScores(assessment.scores());
             attempt.setTranscriptionText(assessment.transcription());
+            attempt.setTranscript(assessment.transcript());
+            attempt.setAssessmentWords(assessment.wordFeedback());
+            // Compatibility for clients released before the evidence split.
             attempt.setTranscription(assessment.wordFeedback());
             attempt.setAnalysis(assessment.analysis());
             attempt = attemptRepository.save(attempt);
-            return evaluation(attempt, exercise, "Whisper đã nhận diện câu nói và Gemini đã phân tích kết quả.");
+            return evaluation(attempt, exercise, "Azure đã đánh giá phát âm; WhisperX đã tạo transcript và timeline.");
         } catch (RuntimeException exception) {
             attempt.setStatus("provider_error");
             attemptRepository.save(attempt);
@@ -104,7 +109,10 @@ public class PronunciationService {
 
     private PronunciationEvaluationDto evaluation(PronunciationAttempt attempt, PronunciationExercise exercise, String message) {
         return PronunciationEvaluationDto.builder().attemptId(attempt.getId()).status(attempt.getStatus()).message(message)
-                .scores(attempt.getScores()).transcriptionText(attempt.getTranscriptionText()).analysis(attempt.getAnalysis())
+                .assessmentVersion(attempt.getAssessmentVersion()).assessmentProvider(assessmentProvider(attempt))
+                .transcriptProvider(transcriptProvider(attempt)).scores(attempt.getScores())
+                .transcriptionText(attempt.getTranscriptionText()).transcript(attempt.getTranscript()).analysis(attempt.getAnalysis())
+                .assessmentWords(attempt.getAssessmentWords())
                 .transcription(attempt.getTranscription())
                 .referenceWaveform(exercise.getSentences().get(attempt.getSentenceIndex()).getWaveformData())
                 .userWaveform(attempt.getUserWaveform())
@@ -113,12 +121,25 @@ public class PronunciationService {
 
     private PronunciationAttemptDto historyEntry(PronunciationAttempt attempt) {
         return PronunciationAttemptDto.builder().id(attempt.getId()).exerciseId(attempt.getExerciseId())
-                .sentenceIndex(attempt.getSentenceIndex()).status(attempt.getStatus()).scores(attempt.getScores())
-                .transcriptionText(attempt.getTranscriptionText()).analysis(attempt.getAnalysis()).transcription(attempt.getTranscription())
+                .sentenceIndex(attempt.getSentenceIndex()).status(attempt.getStatus()).assessmentVersion(attempt.getAssessmentVersion())
+                .assessmentProvider(assessmentProvider(attempt)).transcriptProvider(transcriptProvider(attempt)).scores(attempt.getScores())
+                .transcriptionText(attempt.getTranscriptionText()).transcript(attempt.getTranscript()).analysis(attempt.getAnalysis())
+                .assessmentWords(attempt.getAssessmentWords()).transcription(attempt.getTranscription())
                 .userWaveform(attempt.getUserWaveform()).attemptedAt(attempt.getAttemptedAt())
                 .audioDurationMs(attempt.getAudioDurationMs())
                 .attemptAudioUrl(attempt.getAudioObjectKey() == null ? "" : "/pronunciation/attempts/" + attempt.getId() + "/audio")
                 .build();
+    }
+
+    private String assessmentProvider(PronunciationAttempt attempt) {
+        return attempt.getProvider() == null ? "legacy" : attempt.getProvider().contains("azure") ? "azure-pa" : attempt.getProvider();
+    }
+
+    private String transcriptProvider(PronunciationAttempt attempt) {
+        if (attempt.getTranscript() != null && attempt.getTranscript().getProvider() != null) {
+            return attempt.getTranscript().getProvider();
+        }
+        return attempt.getProvider() != null && attempt.getProvider().contains("whisper") ? "whisperx" : "legacy";
     }
 
     private List<Double> waveform(byte[] pcm) {

@@ -27,6 +27,8 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
   final _service = PronunciationService();
   final _bytes = BytesBuilder(copy: false);
   StreamSubscription<Uint8List>? _subscription;
+  StreamSubscription<Duration>? _positionSubscription;
+  Timer? _recordingLimitTimer;
   bool _recording = false;
   bool _evaluating = false;
   String? _playingKey;
@@ -34,16 +36,24 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
   List<double> _liveWaveform = const [];
   List<PronunciationAttemptSummary> _history = const [];
   String? _error;
+  Duration _playbackPosition = Duration.zero;
 
   @override
   void initState() {
     super.initState();
+    _positionSubscription = _player.positionStream.listen((position) {
+      if (mounted && _playingKey != null) {
+        setState(() => _playbackPosition = position);
+      }
+    });
     unawaited(_loadHistory());
   }
 
   @override
   void dispose() {
     _subscription?.cancel();
+    _positionSubscription?.cancel();
+    _recordingLimitTimer?.cancel();
     _recorder.dispose();
     _player.dispose();
     super.dispose();
@@ -61,6 +71,7 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
   Future<void> _record() async {
     if (_recording) {
       await _subscription?.cancel();
+      _recordingLimitTimer?.cancel();
       await _recorder.stop();
       if (mounted) setState(() => _recording = false);
       return;
@@ -82,6 +93,16 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
         ),
       );
       _subscription = stream.listen(_onAudioChunk);
+      _recordingLimitTimer = Timer(const Duration(seconds: 29), () async {
+        if (!_recording) return;
+        await _record();
+        if (mounted) {
+          setState(
+            () => _error =
+                'Bản ghi đã tự dừng sau 29 giây để Azure đánh giá chính xác.',
+          );
+        }
+      });
       setState(() {
         _recording = true;
         _result = null;
@@ -209,6 +230,7 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
   }
 
   Future<void> _beginPlayback(String key) async {
+    _playbackPosition = Duration.zero;
     if (mounted) setState(() => _playingKey = key);
     try {
       await _player.play();
@@ -219,7 +241,12 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
 
   Future<void> _stopPlayback() async {
     await _player.stop();
-    if (mounted) setState(() => _playingKey = null);
+    if (mounted) {
+      setState(() {
+        _playingKey = null;
+        _playbackPosition = Duration.zero;
+      });
+    }
   }
 
   @override
@@ -359,91 +386,185 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
     child: Text(_error!, style: const TextStyle(color: Colors.redAccent)),
   );
 
-  Widget _resultCard(PronunciationResult result) => Card(
-    margin: const EdgeInsets.only(top: 12),
-    child: Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _label(
-            result.status == 'completed' ? 'ĐỘ KHỚP CÂU ĐỌC' : 'TRẠNG THÁI',
-          ),
-          const SizedBox(height: 8),
-          Text(
-            result.message,
-            style: GoogleFonts.inter(color: AppTheme.textPrimary, height: 1.5),
-          ),
-          if (result.status == 'completed') ...[
-            const SizedBox(height: 6),
-            Text(
-              'Điểm dựa trên transcript Whisper và câu mẫu, không phải chấm âm vị.',
-              style: GoogleFonts.inter(
-                fontSize: 11,
-                color: AppTheme.textSecondary,
-                height: 1.4,
-              ),
-            ),
-          ],
-          if (result.scores != null) ...[
-            const SizedBox(height: 16),
-            _scores(result.scores!),
-          ],
-          if (result.transcriptionText.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            Text(
-              'Bạn đã nói: ${result.transcriptionText}',
-              style: GoogleFonts.inter(
-                fontSize: 13,
-                color: AppTheme.textSecondary,
-              ),
-            ),
-          ],
-          if (result.analysis != null) ...[
-            const SizedBox(height: 16),
-            _label('NHẬN XÉT CỦA GEMINI'),
+  Widget _resultCard(PronunciationResult result) {
+    final focusWords = _focusWords(result.feedback);
+    final isComplete = result.status == 'completed';
+    return Card(
+      margin: const EdgeInsets.only(top: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _label(isComplete ? 'KẾT QUẢ CỦA BẠN' : 'TRẠNG THÁI'),
             const SizedBox(height: 8),
-            if (result.analysis!.summaryVi.isNotEmpty)
-              Text(
-                result.analysis!.summaryVi,
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: AppTheme.textPrimary,
-                  height: 1.45,
-                ),
+            Text(
+              isComplete ? _scoreSummary(result.scores?.overall) : result.message,
+              style: GoogleFonts.inter(
+                color: AppTheme.textPrimary,
+                fontSize: isComplete ? 16 : 14,
+                fontWeight: isComplete ? FontWeight.w600 : FontWeight.w400,
+                height: 1.45,
               ),
-            if (result.analysis!.correctedText.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                'Câu gợi ý: ${result.analysis!.correctedText}',
-                style: GoogleFonts.inter(
-                  fontSize: 13,
-                  color: AppTheme.secondary,
-                  height: 1.45,
-                ),
-              ),
+            ),
+            if (result.scores != null) ...[
+              const SizedBox(height: 16),
+              _scores(result.scores!),
             ],
-            if (result.analysis!.grammarNoteVi.isNotEmpty) ...[
+            if (isComplete) ...[
+              const SizedBox(height: 20),
+              _label('CẦN LUYỆN THÊM'),
+              const SizedBox(height: 8),
+              if (focusWords.isEmpty)
+                Text(
+                  'Không có từ nào cần chú ý thêm trong lần đọc này.',
+                  style: GoogleFonts.inter(
+                    fontSize: 13,
+                    color: AppTheme.textSecondary,
+                    height: 1.4,
+                  ),
+                )
+              else
+                _focusFeedback(focusWords),
+              const SizedBox(height: 14),
+              _label('GỢI Ý'),
               const SizedBox(height: 6),
               Text(
-                result.analysis!.grammarNoteVi,
+                _practiceTip(result.analysis, focusWords),
                 style: GoogleFonts.inter(
-                  fontSize: 12,
+                  fontSize: 13,
                   color: AppTheme.textSecondary,
-                  height: 1.4,
+                  height: 1.45,
                 ),
               ),
             ],
+            if (_hasDetails(result)) ...[
+              const SizedBox(height: 8),
+              _details(result),
+            ],
           ],
-          if (result.feedback.isNotEmpty) ...[
-            const SizedBox(height: 16),
-            _label('ĐỘ KHỚP THEO TỪ'),
-            const SizedBox(height: 8),
-            _feedback(result.feedback),
-          ],
-        ],
+        ),
       ),
+    );
+  }
+
+  String _scoreSummary(int? score) {
+    if (score == null) return 'Đã nhận kết quả đánh giá.';
+    if (score >= 85) return 'Phát âm tốt. Hãy giữ nhịp đọc tự nhiên.';
+    if (score >= 65) return 'Khá tốt. Luyện thêm các từ bên dưới để rõ hơn.';
+    return 'Hãy luyện lại câu này, bắt đầu với các từ bên dưới.';
+  }
+
+  List<PronunciationWordFeedback> _uniqueFeedback(
+    List<PronunciationWordFeedback> words,
+  ) {
+    final lowestScoreByWord = <String, PronunciationWordFeedback>{};
+    for (final word in words) {
+      final key = word.text.trim();
+      if (key.isEmpty) continue;
+      final current = lowestScoreByWord[key];
+      if (current == null || word.score < current.score) {
+        lowestScoreByWord[key] = word;
+      }
+    }
+    return lowestScoreByWord.values.toList()
+      ..sort((left, right) => left.score.compareTo(right.score));
+  }
+
+  List<PronunciationWordFeedback> _focusWords(
+    List<PronunciationWordFeedback> words,
+  ) => _uniqueFeedback(words)
+      .where(
+        (word) =>
+            word.score < 85 || !word.errorType.toLowerCase().contains('none'),
+      )
+      .take(3)
+      .toList();
+
+  String _practiceTip(
+    PronunciationAnalysis? analysis,
+    List<PronunciationWordFeedback> focusWords,
+  ) {
+    final tip = analysis?.interpretations
+        .map((item) => item.practiceTipVi.trim())
+        .where((item) => item.isNotEmpty)
+        .cast<String>()
+        .firstOrNull;
+    if (tip != null) return tip;
+    if (focusWords.isEmpty) {
+      return 'Nghe lại câu mẫu rồi đọc lại một lần với tốc độ tự nhiên.';
+    }
+    return 'Nghe câu mẫu, đọc chậm các từ trên rồi ghép lại thành cả câu.';
+  }
+
+  bool _hasDetails(PronunciationResult result) =>
+      result.transcriptionText.isNotEmpty ||
+      (result.transcript?.words.isNotEmpty ?? false) ||
+      result.feedback.isNotEmpty;
+
+  Widget _focusFeedback(List<PronunciationWordFeedback> words) => Wrap(
+    spacing: 6,
+    runSpacing: 6,
+    children: words
+        .map(
+          (word) => Tooltip(
+            message: 'Điểm chính xác ${word.score}/100',
+            child: Semantics(
+              label: '${word.text}, ${word.score} trên 100',
+              child: Chip(
+                label: Text('${word.text} · ${word.score}'),
+                backgroundColor: _feedbackColor(word.score).withValues(
+                  alpha: .18,
+                ),
+                side: BorderSide(
+                  color: _feedbackColor(word.score).withValues(alpha: .65),
+                ),
+                labelStyle: GoogleFonts.inter(
+                  color: _feedbackColor(word.score),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        )
+        .toList(),
+  );
+
+  Widget _details(PronunciationResult result) => ExpansionTile(
+    tilePadding: EdgeInsets.zero,
+    childrenPadding: const EdgeInsets.only(bottom: 4),
+    iconColor: AppTheme.textSecondary,
+    collapsedIconColor: AppTheme.textSecondary,
+    title: Text(
+      'Xem transcript và điểm chi tiết',
+      style: GoogleFonts.inter(fontSize: 12, color: AppTheme.textSecondary),
     ),
+    children: [
+      if (result.transcriptionText.isNotEmpty) ...[
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            'Bạn đã đọc: ${result.transcriptionText}',
+            style: GoogleFonts.inter(
+              fontSize: 13,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+      ],
+      if (result.transcript?.words.isNotEmpty ?? false) ...[
+        Align(alignment: Alignment.centerLeft, child: _label('MỐC THỜI GIAN')),
+        const SizedBox(height: 8),
+        _timeline(result.transcript!),
+        const SizedBox(height: 14),
+      ],
+      if (result.feedback.isNotEmpty) ...[
+        Align(alignment: Alignment.centerLeft, child: _label('ĐIỂM TỪNG ÂM')),
+        const SizedBox(height: 8),
+        _feedback(_uniqueFeedback(result.feedback)),
+      ],
+    ],
   );
 
   Widget _historySection() => Padding(
@@ -503,9 +624,9 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
 
   Widget _scores(PronunciationScores scores) => Row(
     children: [
-      _score('Tổng', scores.overall, AppTheme.primary),
-      _score('Khớp chữ', scores.accuracy, AppTheme.secondary),
-      _score('Nhịp đọc', scores.fluency, Colors.lightBlueAccent),
+      _score('Phát âm', scores.overall, AppTheme.primary),
+      _score('Chính xác', scores.accuracy, AppTheme.secondary),
+      _score('Lưu loát', scores.fluency, Colors.lightBlueAccent),
       _score('Đủ từ', scores.completeness, Colors.orangeAccent),
     ],
   );
@@ -537,24 +658,75 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
         .map(
           (word) => Tooltip(
             message: word.phonemeDetail.isEmpty
-                ? 'Độ khớp Hangul: ${word.score}/100'
+                ? 'Azure · ${word.errorType}'
                 : word.phonemeDetail,
-            child: Chip(
-              label: Text('${word.text} ${word.score}'),
-              backgroundColor: _feedbackColor(
-                word.score,
-              ).withValues(alpha: .18),
-              side: BorderSide(
-                color: _feedbackColor(word.score).withValues(alpha: .65),
-              ),
-              labelStyle: GoogleFonts.inter(
-                color: _feedbackColor(word.score),
-                fontWeight: FontWeight.w600,
-              ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Chip(
+                  label: Text('${word.text} ${word.score}'),
+                  backgroundColor: _feedbackColor(
+                    word.score,
+                  ).withValues(alpha: .18),
+                  side: BorderSide(
+                    color: _feedbackColor(word.score).withValues(alpha: .65),
+                  ),
+                  labelStyle: GoogleFonts.inter(
+                    color: _feedbackColor(word.score),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                if (word.phonemes.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Text(
+                      word.phonemes
+                          .map(
+                            (phoneme) =>
+                                'Âm ${phoneme.index + 1}: ${phoneme.score}',
+                          )
+                          .join(' · '),
+                      style: GoogleFonts.inter(
+                        fontSize: 10,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
         )
         .toList(),
+  );
+
+  Widget _timeline(PronunciationTranscript transcript) => Wrap(
+    spacing: 6,
+    runSpacing: 6,
+    children: transcript.words.map((word) {
+      final start = word.startSeconds;
+      final end = word.endSeconds;
+      final active =
+          start != null &&
+          end != null &&
+          _playbackPosition.inMilliseconds / 1000 >= start &&
+          _playbackPosition.inMilliseconds / 1000 <= end;
+      final timing = start == null || end == null
+          ? 'không căn chỉnh'
+          : '${start.toStringAsFixed(1)}–${end.toStringAsFixed(1)}s';
+      return Tooltip(
+        message: timing,
+        child: Chip(
+          label: Text(word.text),
+          backgroundColor: (active ? AppTheme.primary : AppTheme.surface)
+              .withValues(alpha: active ? .42 : .75),
+          labelStyle: GoogleFonts.inter(
+            color: active ? Colors.black : AppTheme.textPrimary,
+            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+          ),
+        ),
+      );
+    }).toList(),
   );
 
   Color _feedbackColor(int score) => score >= 85

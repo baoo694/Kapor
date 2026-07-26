@@ -12,9 +12,15 @@ public class PronunciationEvaluationDto {
     private String attemptId;
     private String status;
     private String message;
+    private String assessmentVersion;
+    private String assessmentProvider;
+    private String transcriptProvider;
     private PronunciationAttempt.Scores scores;
     private String transcriptionText;
+    private PronunciationAttempt.Transcript transcript;
     private PronunciationAttempt.Analysis analysis;
+    private List<PronunciationAttempt.WordFeedback> assessmentWords;
+    /** @deprecated Compatibility alias for assessmentWords. */
     private List<PronunciationAttempt.WordFeedback> transcription;
     private List<Double> referenceWaveform;
     private List<Double> userWaveform;

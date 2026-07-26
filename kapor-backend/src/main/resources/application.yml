@@ -71,18 +71,17 @@ minio:
   secret-key: ${MINIO_SECRET_KEY:minioadmin}
   bucket-name: ${MINIO_BUCKET:kapor}
 
-# Whisper only transcribes. Gemini compares the transcript with the reference
-# sentence and produces the learner-facing score, correction, and explanation.
-whisper:
-  provider: ${WHISPER_PROVIDER:local}
-  service-url: ${WHISPER_SERVICE_URL:http://localhost:8001}
+# Azure is the sole source of pronunciation scores. Keep credentials in the
+# runtime environment or a secret manager; never expose them to Flutter.
+azure:
+  speech:
+    key: ${AZURE_SPEECH_KEY:}
+    region: ${AZURE_SPEECH_REGION:}
+    locale: ${AZURE_SPEECH_LOCALE:ko-KR}
 
-# Set WHISPER_PROVIDER=openai and OPENAI_API_KEY to use OpenAI's hosted
-# Whisper transcription API instead of the local faster-whisper container.
-openai:
-  api-key: ${OPENAI_API_KEY:}
-  whisper:
-    model-name: ${OPENAI_WHISPER_MODEL:whisper-1}
+# WhisperX owns only transcript and word-level UI timestamps.
+whisperx:
+  service-url: ${WHISPERX_SERVICE_URL:${WHISPER_SERVICE_URL:http://localhost:8001}}
 
 pronunciation:
   audio:

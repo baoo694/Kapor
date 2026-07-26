@@ -61,6 +61,15 @@ minio:
 whisper:
   service-url: http://localhost:8001
 
+azure:
+  speech:
+    key: test-azure-speech-key
+    region: eastus
+    locale: ko-KR
+
+whisperx:
+  service-url: http://localhost:8001
+
 # NLP Microservice
 nlp:
   service-url: http://localhost:8001

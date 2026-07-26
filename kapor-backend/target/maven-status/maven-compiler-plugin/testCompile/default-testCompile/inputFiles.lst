@@ -20,6 +20,7 @@
 /Users/quachgiabao/Kapor/kapor-backend/src/test/java/com/kapor/honorifics/service/HonorificsServiceTest.java
 /Users/quachgiabao/Kapor/kapor-backend/src/test/java/com/kapor/membyte/controller/MembyteControllerTest.java
 /Users/quachgiabao/Kapor/kapor-backend/src/test/java/com/kapor/pronunciation/controller/PronunciationControllerE2ETest.java
+/Users/quachgiabao/Kapor/kapor-backend/src/test/java/com/kapor/pronunciation/service/AzurePronunciationAssessorTest.java
 /Users/quachgiabao/Kapor/kapor-backend/src/test/java/com/kapor/pronunciation/service/KoreanReadingMatchScorerTest.java
 /Users/quachgiabao/Kapor/kapor-backend/src/test/java/com/kapor/tts/GeminiTtsServiceTest.java
 /Users/quachgiabao/Kapor/kapor-backend/src/test/java/com/kapor/user/controller/UserControllerTest.java
