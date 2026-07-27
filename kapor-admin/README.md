@@ -1,5 +1,18 @@
 # React + TypeScript + Vite
 
+## Backend API configuration
+
+The deployed Kapor API defaults to `https://api.domday.food`. To override it
+for local development, copy `.env.example` to `.env.local` and set
+`VITE_API_URL`, for example:
+
+```env
+VITE_API_URL=http://localhost:8080
+```
+
+Vite embeds `VITE_*` values in the browser build, so they must never contain
+passwords, API keys, or other secrets.
+
 This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
 
 Currently, two official plugins are available:

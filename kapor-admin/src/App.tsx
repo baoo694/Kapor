@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
   api,
+  API_BASE,
   type AdminLessonPayload,
   type AdminTopicPayload,
   type AdminVideoPayload,
@@ -3527,7 +3528,7 @@ function AdminLoginScreen({ onLogin }: { onLogin: () => void }) {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch((import.meta.env.VITE_API_URL || 'http://192.168.0.73:8080') + "/api/auth/login", {
+      const res = await fetch(`${API_BASE}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })

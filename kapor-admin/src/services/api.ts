@@ -1,4 +1,5 @@
-const API_BASE = import.meta.env.VITE_API_URL || 'http://192.168.0.73:8080';
+export const API_BASE = (import.meta.env.VITE_API_URL || 'https://api.domday.food')
+  .replace(/\/+$/, '');
 
 export type AdminTopicPayload = {
   id?: string;
