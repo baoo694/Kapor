@@ -41,10 +41,9 @@ services:
     restart: unless-stopped
     environment:
       HF_HOME: /models
-      # A 2 GB CPU service cannot keep large-v3 and the Korean alignment model
-      # resident together. Azure owns scoring; small is sufficient for its
-      # independent transcript/timeline responsibility.
-      WHISPERX_MODEL: ${WHISPERX_MODEL:-small}
+      # large-v3-turbo improves Korean ASR while its pruned decoder keeps
+      # CPU-only latency practical for short pronunciation exercises.
+      WHISPERX_MODEL: ${WHISPERX_MODEL:-large-v3-turbo}
       WHISPERX_DEVICE: ${WHISPERX_DEVICE:-cpu}
       WHISPERX_COMPUTE_TYPE: ${WHISPERX_COMPUTE_TYPE:-int8}
       WHISPERX_VAD_METHOD: ${WHISPERX_VAD_METHOD:-silero}
@@ -52,7 +51,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2G
+          memory: 8G
 
   # ---- Database ----
   mongo:
