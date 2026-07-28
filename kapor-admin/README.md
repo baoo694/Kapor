@@ -1,45 +1,52 @@
-# React + TypeScript + Vite
+# Kapor Admin
 
-## Backend API configuration
+React/Vite admin panel, deployable as a small Nginx Docker image.
 
-The deployed Kapor API defaults to `https://api.domday.food`. To override it
-for local development, copy `.env.example` to `.env.local` and set
-`VITE_API_URL`, for example:
+## Run on a Google Compute Engine VM
 
-```env
-VITE_API_URL=http://localhost:8080
+1. Create a Debian or Ubuntu Compute Engine VM with a **static external IP**.
+   In the VPC firewall, allow inbound TCP `80` (and `443` when TLS is
+   configured). Do **not** expose backend database, cache, object-storage, or
+   NLP-service ports.
+2. SSH to the VM and install Docker Engine with the Docker Compose plugin.
+3. Clone this repository and enter the admin directory:
+
+   ```bash
+   git clone <YOUR_REPOSITORY_URL> kapor
+   cd kapor/kapor-admin
+   cp .env.production.example .env
+   ```
+
+4. Edit `.env` with the public HTTPS address of the Kapor backend:
+
+   ```env
+   VITE_API_URL=https://api.domday.food
+   KAPOR_ADMIN_PORT=80
+   ```
+
+   `VITE_API_URL` is compiled into the JavaScript bundle and therefore public.
+   Never place passwords, API keys, or other secrets in it.
+
+5. Build and start the service:
+
+   ```bash
+   docker compose up -d --build
+   docker compose ps
+   ```
+
+   Open `http://<VM_EXTERNAL_IP>/`. For production, point a DNS name at the
+   static IP and terminate TLS with a reverse proxy or load balancer.
+
+## Updating
+
+```bash
+git pull
+docker compose up -d --build
 ```
 
-Vite embeds `VITE_*` values in the browser build, so they must never contain
-passwords, API keys, or other secrets.
+Logs: `docker compose logs -f kapor-admin`.
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+## Local development
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Copy `.env.example` to `.env.local`, set `VITE_API_URL` (for example
+`http://localhost:8080`), then run `npm install && npm run dev`.

@@ -1,0 +1,11 @@
+services:
+  kapor-admin:
+    build:
+      context: .
+      args:
+        # This public URL is embedded in the frontend at build time.
+        VITE_API_URL: ${VITE_API_URL:?Set VITE_API_URL in .env}
+    image: kapor-admin:latest
+    ports:
+      - "${KAPOR_ADMIN_PORT:-80}:80"
+    restart: unless-stopped

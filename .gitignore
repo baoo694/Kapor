@@ -9,3 +9,4 @@ kapor-backend/target/
 .env
 .env.*
 !.env.example
+!kapor-admin/.env.production.example
