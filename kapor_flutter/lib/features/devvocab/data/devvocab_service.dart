@@ -74,6 +74,35 @@ class LessonVocabularyItem {
   }
 }
 
+class LessonExercise {
+  final String id;
+  final String type;
+  final String question;
+  final String questionVi;
+  final List<String> options;
+
+  const LessonExercise({
+    required this.id,
+    required this.type,
+    required this.question,
+    required this.questionVi,
+    required this.options,
+  });
+
+  factory LessonExercise.fromJson(Map<String, dynamic> json) {
+    final rawOptions = json['options'];
+    return LessonExercise(
+      id: json['id']?.toString() ?? '',
+      type: json['type']?.toString() ?? '',
+      question: json['question']?.toString() ?? '',
+      questionVi: json['questionVi']?.toString() ?? '',
+      options: rawOptions is List
+          ? rawOptions.map((option) => option.toString()).toList()
+          : const [],
+    );
+  }
+}
+
 class DevVocabLesson {
   final String id;
   final String topicId;
@@ -83,6 +112,7 @@ class DevVocabLesson {
   final String contentVi;
   final int order;
   final List<LessonVocabularyItem> vocabulary;
+  final List<LessonExercise> exercises;
 
   const DevVocabLesson({
     required this.id,
@@ -93,10 +123,12 @@ class DevVocabLesson {
     required this.contentVi,
     required this.order,
     required this.vocabulary,
+    required this.exercises,
   });
 
   factory DevVocabLesson.fromJson(Map<String, dynamic> json) {
     final rawVocabulary = json['vocabulary'];
+    final rawExercises = json['exercises'];
     return DevVocabLesson(
       id: json['id']?.toString() ?? '',
       topicId: json['topicId']?.toString() ?? '',
@@ -115,6 +147,78 @@ class DevVocabLesson {
                 )
                 .toList()
           : const [],
+      exercises: rawExercises is List
+          ? rawExercises
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      LessonExercise.fromJson(Map<String, dynamic>.from(item)),
+                )
+                .toList()
+          : const [],
+    );
+  }
+}
+
+class LessonActivityProgress {
+  final String lessonId;
+  final bool studyCompleted;
+  final bool quizPassed;
+  final bool lessonCompleted;
+  final int bestQuizScore;
+  final int quizAttempts;
+  final int bestMatchAccuracy;
+  final int matchingAttempts;
+
+  const LessonActivityProgress({
+    required this.lessonId,
+    required this.studyCompleted,
+    required this.quizPassed,
+    required this.lessonCompleted,
+    required this.bestQuizScore,
+    required this.quizAttempts,
+    required this.bestMatchAccuracy,
+    required this.matchingAttempts,
+  });
+
+  factory LessonActivityProgress.fromJson(Map<String, dynamic> json) {
+    return LessonActivityProgress(
+      lessonId: json['lessonId']?.toString() ?? '',
+      studyCompleted: json['studyCompleted'] == true,
+      quizPassed: json['quizPassed'] == true,
+      lessonCompleted: json['lessonCompleted'] == true,
+      bestQuizScore: (json['bestQuizScore'] as num?)?.toInt() ?? 0,
+      quizAttempts: (json['quizAttempts'] as num?)?.toInt() ?? 0,
+      bestMatchAccuracy: (json['bestMatchAccuracy'] as num?)?.toInt() ?? 0,
+      matchingAttempts: (json['matchingAttempts'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
+class QuizResult {
+  final int score;
+  final int correctAnswers;
+  final int totalQuestions;
+  final bool passed;
+  final LessonActivityProgress progress;
+
+  const QuizResult({
+    required this.score,
+    required this.correctAnswers,
+    required this.totalQuestions,
+    required this.passed,
+    required this.progress,
+  });
+
+  factory QuizResult.fromJson(Map<String, dynamic> json) {
+    return QuizResult(
+      score: (json['score'] as num?)?.toInt() ?? 0,
+      correctAnswers: (json['correctAnswers'] as num?)?.toInt() ?? 0,
+      totalQuestions: (json['totalQuestions'] as num?)?.toInt() ?? 0,
+      passed: json['passed'] == true,
+      progress: LessonActivityProgress.fromJson(
+        Map<String, dynamic>.from(json['progress'] as Map? ?? const {}),
+      ),
     );
   }
 }
@@ -282,6 +386,67 @@ class DevVocabService {
     }
   }
 
+  Future<LessonActivityProgress> getActivityProgress(String lessonId) async {
+    try {
+      final response = await _dio.get('/lessons/$lessonId/activity-progress');
+      return _activityProgressFromResponse(response.data);
+    } on DioException catch (error) {
+      throw Exception(
+        _messageFromError(error, 'Không thể tải tiến độ lesson.'),
+      );
+    }
+  }
+
+  Future<LessonActivityProgress> completeStudy(String lessonId) async {
+    try {
+      final response = await _dio.post('/lessons/$lessonId/study/complete');
+      return _activityProgressFromResponse(response.data);
+    } on DioException catch (error) {
+      throw Exception(
+        _messageFromError(error, 'Không thể hoàn thành phần Học.'),
+      );
+    }
+  }
+
+  Future<QuizResult> submitQuiz({
+    required String lessonId,
+    required Map<String, String> answers,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/lessons/$lessonId/quiz/attempts',
+        data: {'answers': answers},
+      );
+      final body = _responseData(response.data, 'Không thể nộp bài kiểm tra.');
+      return QuizResult.fromJson(body);
+    } on DioException catch (error) {
+      throw Exception(_messageFromError(error, 'Không thể nộp bài kiểm tra.'));
+    }
+  }
+
+  Future<LessonActivityProgress> recordMatchingAttempt({
+    required String lessonId,
+    required int completedPairs,
+    required int mistakes,
+    required int durationSeconds,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/lessons/$lessonId/matching/attempts',
+        data: {
+          'completedPairs': completedPairs,
+          'mistakes': mistakes,
+          'durationSeconds': durationSeconds,
+        },
+      );
+      return _activityProgressFromResponse(response.data);
+    } on DioException catch (error) {
+      throw Exception(
+        _messageFromError(error, 'Không thể lưu kết quả ghép thẻ.'),
+      );
+    }
+  }
+
   FlashcardProgress _flashcardProgressFromResponse(dynamic responseBody) {
     if (responseBody is! Map<String, dynamic> || responseBody['data'] is! Map) {
       throw const FormatException('Phản hồi tiến độ thẻ không hợp lệ.');
@@ -294,6 +459,22 @@ class DevVocabService {
     return FlashcardProgress.fromJson(
       Map<String, dynamic>.from(responseBody['data'] as Map),
     );
+  }
+
+  LessonActivityProgress _activityProgressFromResponse(dynamic responseBody) {
+    return LessonActivityProgress.fromJson(
+      _responseData(responseBody, 'Không thể xử lý tiến độ lesson.'),
+    );
+  }
+
+  Map<String, dynamic> _responseData(dynamic responseBody, String fallback) {
+    if (responseBody is! Map<String, dynamic> || responseBody['data'] is! Map) {
+      throw FormatException(fallback);
+    }
+    if (responseBody['success'] != true) {
+      throw Exception(responseBody['message'] ?? fallback);
+    }
+    return Map<String, dynamic>.from(responseBody['data'] as Map);
   }
 
   String _messageFromError(DioException error, String fallback) {

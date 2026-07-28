@@ -8,6 +8,9 @@ import '../../features/devvocab/devvocab_lesson_detail_screen.dart';
 import '../../features/devvocab/data/devvocab_service.dart';
 import '../../features/devvocab/flashcard_study_screen.dart';
 import '../../features/devvocab/flashcard_summary_screen.dart';
+import '../../features/devvocab/lesson_matching_screen.dart';
+import '../../features/devvocab/lesson_quiz_screen.dart';
+import '../../features/devvocab/lesson_study_screen.dart';
 import '../../features/membyte/membyte_screen.dart';
 import '../../features/membyte/membyte_review_screen.dart';
 import '../../features/techtalk/techtalk_select_screen.dart';
@@ -120,6 +123,39 @@ final GoRouter appRouter = GoRouter(
           ),
         );
       },
+    ),
+    GoRoute(
+      path: '/devvocab-lesson/:id/study',
+      pageBuilder: (context, state) => NoTransitionPage(
+        child: LessonStudyScreen(
+          lessonId: state.pathParameters['id'] ?? '',
+          initialLesson: state.extra is DevVocabLesson
+              ? state.extra as DevVocabLesson
+              : null,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/devvocab-lesson/:id/quiz',
+      pageBuilder: (context, state) => NoTransitionPage(
+        child: LessonQuizScreen(
+          lessonId: state.pathParameters['id'] ?? '',
+          initialLesson: state.extra is DevVocabLesson
+              ? state.extra as DevVocabLesson
+              : null,
+        ),
+      ),
+    ),
+    GoRoute(
+      path: '/devvocab-lesson/:id/matching',
+      pageBuilder: (context, state) => NoTransitionPage(
+        child: LessonMatchingScreen(
+          lessonId: state.pathParameters['id'] ?? '',
+          initialLesson: state.extra is DevVocabLesson
+              ? state.extra as DevVocabLesson
+              : null,
+        ),
+      ),
     ),
     GoRoute(
       path: '/devvocab-lesson/:id/flashcards/summary',

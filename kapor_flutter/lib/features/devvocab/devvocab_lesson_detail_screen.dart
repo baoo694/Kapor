@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/theme/app_theme.dart';
 import 'data/devvocab_service.dart';
+import 'widgets/lesson_progress_checklist.dart';
 import 'widgets/vocabulary_flip_card.dart';
 
 class DevVocabLessonDetailScreen extends StatefulWidget {
@@ -26,6 +27,7 @@ class _DevVocabLessonDetailScreenState
   final DevVocabService _devVocabService = DevVocabService();
   final PageController _pageController = PageController();
   DevVocabLesson? _lesson;
+  LessonActivityProgress? _activityProgress;
   bool _isLoading = true;
   String? _errorMessage;
   int _currentCard = 0;
@@ -49,10 +51,14 @@ class _DevVocabLessonDetailScreenState
       _errorMessage = null;
     });
     try {
-      final lesson = await _devVocabService.getLesson(widget.lessonId);
+      final results = await Future.wait([
+        _devVocabService.getLesson(widget.lessonId),
+        _devVocabService.getActivityProgress(widget.lessonId),
+      ]);
       if (!mounted) return;
       setState(() {
-        _lesson = lesson;
+        _lesson = results[0] as DevVocabLesson;
+        _activityProgress = results[1] as LessonActivityProgress;
         _isLoading = false;
       });
     } catch (error) {
@@ -147,6 +153,8 @@ class _DevVocabLessonDetailScreenState
           ),
         ),
         const SizedBox(height: 14),
+        LessonProgressChecklist(progress: _activityProgress),
+        const SizedBox(height: 14),
         _LearningModeTile(
           icon: Icons.style_rounded,
           title: 'Thẻ ghi nhớ',
@@ -162,26 +170,46 @@ class _DevVocabLessonDetailScreenState
         _LearningModeTile(
           icon: Icons.auto_stories_rounded,
           title: 'Học',
-          subtitle: 'Sắp ra mắt',
+          subtitle: _activityProgress?.studyCompleted == true
+              ? 'Đã hoàn thành · Có thể học lại'
+              : 'Đọc nội dung và từ vựng trọng tâm',
           color: const Color(0xFF69A5FF),
-          onTap: null,
+          onTap: () => _openMode('/devvocab-lesson/${lesson.id}/study', lesson),
         ),
         _LearningModeTile(
           icon: Icons.fact_check_outlined,
           title: 'Kiểm tra',
-          subtitle: 'Sắp ra mắt',
+          subtitle: _activityProgress?.quizPassed == true
+              ? 'Đạt ${_activityProgress!.bestQuizScore}% · Có thể làm lại'
+              : _activityProgress?.studyCompleted == true
+              ? 'Đạt từ 80% để hoàn thành lesson'
+              : 'Hoàn thành phần Học để mở khóa',
           color: const Color(0xFF6C78FF),
-          onTap: null,
+          locked: _activityProgress?.studyCompleted != true,
+          onTap: () => _openMode('/devvocab-lesson/${lesson.id}/quiz', lesson),
         ),
         _LearningModeTile(
           icon: Icons.compare_arrows_rounded,
           title: 'Ghép thẻ',
-          subtitle: 'Sắp ra mắt',
+          subtitle:
+              _activityProgress?.matchingAttempts != null &&
+                  _activityProgress!.matchingAttempts > 0
+              ? 'Tốt nhất ${_activityProgress!.bestMatchAccuracy}% · Luyện tập lại'
+              : _activityProgress?.studyCompleted == true
+              ? 'Ghép thuật ngữ với nghĩa tiếng Việt'
+              : 'Hoàn thành phần Học để mở khóa',
           color: const Color(0xFF5BC9F1),
-          onTap: null,
+          locked: _activityProgress?.studyCompleted != true,
+          onTap: () =>
+              _openMode('/devvocab-lesson/${lesson.id}/matching', lesson),
         ),
       ],
     );
+  }
+
+  Future<void> _openMode(String route, DevVocabLesson lesson) async {
+    final changed = await context.push<bool>(route, extra: lesson);
+    if (changed == true && mounted) _loadLesson();
   }
 
   Widget _vocabularyPreview(DevVocabLesson lesson) {
@@ -242,6 +270,7 @@ class _LearningModeTile extends StatelessWidget {
   final String title;
   final String subtitle;
   final Color color;
+  final bool locked;
   final VoidCallback? onTap;
 
   const _LearningModeTile({
@@ -249,6 +278,7 @@ class _LearningModeTile extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.color,
+    this.locked = false,
     required this.onTap,
   });
 
@@ -259,12 +289,14 @@ class _LearningModeTile extends StatelessWidget {
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: onTap,
+          onTap: locked ? null : onTap,
           borderRadius: BorderRadius.circular(16),
           child: Ink(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color(0xFF343D60),
+              color: locked
+                  ? const Color(0xFF343D60).withValues(alpha: 0.58)
+                  : const Color(0xFF343D60),
               borderRadius: BorderRadius.circular(16),
             ),
             child: Row(
@@ -273,10 +305,14 @@ class _LearningModeTile extends StatelessWidget {
                   width: 42,
                   height: 42,
                   decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.18),
+                    color: color.withValues(alpha: locked ? 0.08 : 0.18),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(icon, color: color, size: 25),
+                  child: Icon(
+                    icon,
+                    color: locked ? AppTheme.textSecondary : color,
+                    size: 25,
+                  ),
                 ),
                 const SizedBox(width: 14),
                 Expanded(
@@ -286,7 +322,7 @@ class _LearningModeTile extends StatelessWidget {
                       Text(
                         title,
                         style: GoogleFonts.outfit(
-                          color: Colors.white,
+                          color: locked ? AppTheme.textSecondary : Colors.white,
                           fontSize: 19,
                           fontWeight: FontWeight.w700,
                         ),
@@ -302,7 +338,7 @@ class _LearningModeTile extends StatelessWidget {
                   ),
                 ),
                 Icon(
-                  onTap == null
+                  locked || onTap == null
                       ? Icons.lock_outline
                       : Icons.chevron_right_rounded,
                   color: const Color(0xFFC3C7DD),

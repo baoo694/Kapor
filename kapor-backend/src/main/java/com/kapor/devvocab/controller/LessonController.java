@@ -3,10 +3,14 @@ package com.kapor.devvocab.controller;
 import com.kapor.common.dto.ApiResponse;
 import com.kapor.devvocab.dto.FlashcardProgressDto;
 import com.kapor.devvocab.dto.FlashcardStatusRequest;
+import com.kapor.devvocab.dto.LessonActivityProgressDto;
+import com.kapor.devvocab.dto.MatchingAttemptRequest;
+import com.kapor.devvocab.dto.QuizResultDto;
+import com.kapor.devvocab.dto.QuizSubmissionRequest;
 import com.kapor.devvocab.model.Lesson;
 import com.kapor.devvocab.repository.LessonRepository;
-import com.kapor.common.exception.ResourceNotFoundException;
 import com.kapor.devvocab.service.FlashcardProgressService;
+import com.kapor.devvocab.service.LessonActivityProgressService;
 import com.kapor.analytics.service.ActivityTrackingService;
 import com.kapor.auth.security.CustomUserDetails;
 import jakarta.validation.Valid;
@@ -24,6 +28,7 @@ public class LessonController {
 
     private final LessonRepository lessonRepository;
     private final FlashcardProgressService flashcardProgressService;
+    private final LessonActivityProgressService lessonActivityProgressService;
     private final ActivityTrackingService activityTrackingService;
 
     @GetMapping
@@ -33,9 +38,10 @@ public class LessonController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<ApiResponse<Lesson>> getLessonDetail(@PathVariable String id) {
-        Lesson lesson = lessonRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("Lesson", "id", id));
+    public ResponseEntity<ApiResponse<Lesson>> getLessonDetail(
+            @PathVariable String id,
+            Authentication authentication) {
+        Lesson lesson = flashcardProgressService.getUnlockedLesson(getUserId(authentication), id);
         return ResponseEntity.ok(ApiResponse.ok(lesson));
     }
 
@@ -45,6 +51,41 @@ public class LessonController {
             Authentication authentication) {
         return ResponseEntity.ok(ApiResponse.ok(
                 flashcardProgressService.getProgress(getUserId(authentication), id)));
+    }
+
+    @GetMapping("/{id}/activity-progress")
+    public ResponseEntity<ApiResponse<LessonActivityProgressDto>> getActivityProgress(
+            @PathVariable String id,
+            Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                lessonActivityProgressService.getProgress(getUserId(authentication), id)));
+    }
+
+    @PostMapping("/{id}/study/complete")
+    public ResponseEntity<ApiResponse<LessonActivityProgressDto>> completeStudy(
+            @PathVariable String id,
+            Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                lessonActivityProgressService.completeStudy(getUserId(authentication), id),
+                "Đã hoàn thành phần Học"));
+    }
+
+    @PostMapping("/{id}/quiz/attempts")
+    public ResponseEntity<ApiResponse<QuizResultDto>> submitQuiz(
+            @PathVariable String id,
+            @Valid @RequestBody QuizSubmissionRequest request,
+            Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                lessonActivityProgressService.submitQuiz(getUserId(authentication), id, request)));
+    }
+
+    @PostMapping("/{id}/matching/attempts")
+    public ResponseEntity<ApiResponse<LessonActivityProgressDto>> recordMatchingAttempt(
+            @PathVariable String id,
+            @Valid @RequestBody MatchingAttemptRequest request,
+            Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                lessonActivityProgressService.recordMatchingAttempt(getUserId(authentication), id, request)));
     }
 
     @PutMapping("/{id}/flashcards/{vocabularyId}")

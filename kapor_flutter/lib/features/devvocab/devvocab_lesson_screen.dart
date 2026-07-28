@@ -109,7 +109,6 @@ class _DevVocabLessonScreenState extends State<DevVocabLessonScreen> {
       );
     }
 
-    final nextLessonId = _nextLessonId();
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 18, 16, 24),
       itemCount: _lessons.length + 1,
@@ -142,32 +141,45 @@ class _DevVocabLessonScreenState extends State<DevVocabLessonScreen> {
         }
 
         final lesson = _lessons[index - 1];
+        final isLocked = _isLessonLocked(index - 1);
         return _LessonListCard(
           lesson: lesson,
           position: index,
           progress: _progressByLesson[lesson.id],
-          isNextLesson: lesson.id == nextLessonId,
+          isNextLesson: !isLocked && lesson.id == _nextLessonId(),
+          isLocked: isLocked,
           showConnector: index < _lessons.length,
-          onTap: () =>
-              context.push('/devvocab-lesson/${lesson.id}', extra: lesson),
+          onTap: () {
+            if (isLocked) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Hãy hoàn thành bài học trước để mở khóa.'),
+                ),
+              );
+              return;
+            }
+            context.push('/devvocab-lesson/${lesson.id}', extra: lesson);
+          },
         );
       },
     );
   }
 
+  bool _isLessonLocked(int lessonIndex) {
+    if (lessonIndex == 0) return false;
+    return !_isLessonCompleted(_lessons[lessonIndex - 1]);
+  }
+
+  bool _isLessonCompleted(DevVocabLesson lesson) {
+    final progress = _progressByLesson[lesson.id];
+    return progress != null &&
+        progress.totalCards > 0 &&
+        progress.knownCards >= progress.totalCards;
+  }
+
   String? _nextLessonId() {
     for (final lesson in _lessons) {
-      if (lesson.vocabulary.isEmpty) continue;
-
-      final progress = _progressByLesson[lesson.id];
-      final totalCards = progress?.totalCards ?? 0;
-      final reviewedCards =
-          (progress?.knownCards ?? 0) + (progress?.learningCards ?? 0);
-      final isCompleted =
-          totalCards > 0 && (progress?.knownCards ?? 0) >= totalCards;
-      final isInProgress = !isCompleted && reviewedCards > 0;
-
-      if (!isInProgress && !isCompleted) return lesson.id;
+      if (!_isLessonCompleted(lesson)) return lesson.id;
     }
     return null;
   }
@@ -178,6 +190,7 @@ class _LessonListCard extends StatefulWidget {
   final int position;
   final FlashcardProgress? progress;
   final bool isNextLesson;
+  final bool isLocked;
   final bool showConnector;
   final VoidCallback onTap;
 
@@ -186,6 +199,7 @@ class _LessonListCard extends StatefulWidget {
     required this.position,
     required this.progress,
     required this.isNextLesson,
+    required this.isLocked,
     required this.showConnector,
     required this.onTap,
   });
@@ -212,18 +226,21 @@ class _LessonListCardState extends State<_LessonListCard> {
   bool get _isEmpty => widget.lesson.vocabulary.isEmpty;
 
   Color get _accentColor {
+    if (widget.isLocked) return AppTheme.textSecondary.withValues(alpha: 0.58);
     if (_isCompleted) return const Color(0xFF55D8AD);
     if (_isInProgress || widget.isNextLesson) return AppTheme.primary;
     return AppTheme.textSecondary;
   }
 
   Color get _cardColor {
+    if (widget.isLocked) return AppTheme.surface.withValues(alpha: 0.58);
     if (_isInProgress) return const Color(0xFF102B31);
     if (_isEmpty) return AppTheme.surface.withValues(alpha: 0.58);
     return AppTheme.surface;
   }
 
   Color get _borderColor {
+    if (widget.isLocked) return Colors.white.withValues(alpha: 0.05);
     if (_isInProgress) return AppTheme.primary.withValues(alpha: 0.58);
     if (_isCompleted) return Colors.white.withValues(alpha: 0.10);
     if (widget.isNextLesson) return AppTheme.primary.withValues(alpha: 0.30);
@@ -298,6 +315,9 @@ class _LessonListCardState extends State<_LessonListCard> {
   }
 
   String get _semanticLabel {
+    if (widget.isLocked) {
+      return 'Bài học ${widget.lesson.title}, bị khóa. Hoàn thành bài học trước để mở khóa';
+    }
     if (_isCompleted) return 'Bài học ${widget.lesson.title}, đã hoàn thành';
     if (_isInProgress) {
       return 'Tiếp tục bài học ${widget.lesson.title}, $_reviewedCards trên ${widget.progress!.totalCards} thẻ';
@@ -337,7 +357,7 @@ class _LessonListCardState extends State<_LessonListCard> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: GoogleFonts.outfit(
-                  color: _isEmpty
+                  color: _isEmpty || widget.isLocked
                       ? AppTheme.textPrimary.withValues(alpha: 0.62)
                       : AppTheme.textPrimary,
                   fontSize: 16,
@@ -364,22 +384,29 @@ class _LessonListCardState extends State<_LessonListCard> {
                       fontSize: 10,
                     ),
                   ),
-                  if (_isInProgress) ...[
+                  if (!widget.isLocked && _isInProgress) ...[
                     const Spacer(),
                     _StatusLabel(label: 'Tiếp tục', color: AppTheme.primary),
                   ],
-                  if (_isCompleted) ...[
+                  if (!widget.isLocked && _isCompleted) ...[
                     const Spacer(),
                     _StatusLabel(
                       label: 'Hoàn thành',
                       color: const Color(0xFF55D8AD),
                     ),
                   ],
-                  if (widget.isNextLesson) ...[
+                  if (widget.isLocked) ...[
+                    const Spacer(),
+                    _StatusLabel(
+                      label: 'Đã khóa',
+                      color: AppTheme.textSecondary,
+                    ),
+                  ],
+                  if (!widget.isLocked && widget.isNextLesson) ...[
                     const Spacer(),
                     _StatusLabel(label: 'Bắt đầu', color: AppTheme.primary),
                   ],
-                  if (_isEmpty) ...[
+                  if (!widget.isLocked && _isEmpty) ...[
                     const Spacer(),
                     _StatusLabel(
                       label: 'Chưa có nội dung',
@@ -388,7 +415,7 @@ class _LessonListCardState extends State<_LessonListCard> {
                   ],
                 ],
               ),
-              if (_isInProgress) ...[
+              if (!widget.isLocked && _isInProgress) ...[
                 const SizedBox(height: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(99),
@@ -400,7 +427,7 @@ class _LessonListCardState extends State<_LessonListCard> {
                   ),
                 ),
               ],
-              if (_isInProgress) ...[
+              if (!widget.isLocked && _isInProgress) ...[
                 const SizedBox(height: 4),
                 Text(
                   '$_reviewedCards/${widget.progress!.totalCards} thẻ đã xem',
@@ -413,7 +440,12 @@ class _LessonListCardState extends State<_LessonListCard> {
             ],
           ),
         ),
-        if (_isCompleted)
+        if (widget.isLocked)
+          Icon(
+            Icons.lock_rounded,
+            color: AppTheme.textSecondary.withValues(alpha: 0.68),
+          )
+        else if (_isCompleted)
           const Icon(Icons.check_circle_rounded, color: Color(0xFF55D8AD))
         else if (_isEmpty)
           Icon(

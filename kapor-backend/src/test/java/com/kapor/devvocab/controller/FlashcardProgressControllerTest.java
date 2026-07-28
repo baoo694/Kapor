@@ -6,6 +6,7 @@ import com.kapor.auth.security.JwtService;
 import com.kapor.devvocab.model.Lesson;
 import com.kapor.devvocab.model.Topic;
 import com.kapor.devvocab.repository.FlashcardProgressRepository;
+import com.kapor.devvocab.repository.LessonActivityProgressRepository;
 import com.kapor.devvocab.repository.LessonRepository;
 import com.kapor.devvocab.repository.TopicRepository;
 import com.kapor.user.model.User;
@@ -22,6 +23,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -35,6 +37,7 @@ class FlashcardProgressControllerTest {
     @Autowired private TopicRepository topicRepository;
     @Autowired private LessonRepository lessonRepository;
     @Autowired private FlashcardProgressRepository flashcardProgressRepository;
+    @Autowired private LessonActivityProgressRepository lessonActivityProgressRepository;
     @Autowired private UserRepository userRepository;
     @Autowired private JwtService jwtService;
 
@@ -44,6 +47,7 @@ class FlashcardProgressControllerTest {
     @BeforeEach
     void setUp() {
         flashcardProgressRepository.deleteAll();
+        lessonActivityProgressRepository.deleteAll();
         lessonRepository.deleteAll();
         topicRepository.deleteAll();
         userRepository.deleteAll();
@@ -57,6 +61,7 @@ class FlashcardProgressControllerTest {
     @AfterEach
     void cleanUp() {
         flashcardProgressRepository.deleteAll();
+        lessonActivityProgressRepository.deleteAll();
         lessonRepository.deleteAll();
         topicRepository.deleteAll();
         userRepository.deleteAll();
@@ -95,5 +100,68 @@ class FlashcardProgressControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.knownCards").value(0))
                 .andExpect(jsonPath("$.data.learningCards").value(0));
+    }
+
+    @Test
+    void locksLaterLessonsUntilThePreviousLessonIsCompleted() throws Exception {
+        Lesson laterLesson = lessonRepository.save(TestDataFactory.createTestLesson(lesson.getTopicId(), 1));
+
+        mockMvc.perform(get("/api/lessons/{id}", laterLesson.getId())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(put("/api/lessons/{id}/flashcards/{vocabularyId}", laterLesson.getId(),
+                        laterLesson.getVocabulary().get(0).getId())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"KNOWN\"}"))
+                .andExpect(status().isForbidden());
+
+        for (Lesson.VocabularyItem vocabulary : lesson.getVocabulary()) {
+            mockMvc.perform(put("/api/lessons/{id}/flashcards/{vocabularyId}", lesson.getId(), vocabulary.getId())
+                            .header("Authorization", "Bearer " + token)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"status\":\"KNOWN\"}"))
+                    .andExpect(status().isOk());
+        }
+
+        mockMvc.perform(get("/api/lessons/{id}", laterLesson.getId())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(put("/api/lessons/{id}/flashcards/{vocabularyId}", laterLesson.getId(),
+                        laterLesson.getVocabulary().get(0).getId())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"status\":\"KNOWN\"}"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void unlocksTheNextLessonAfterStudyAndPassingQuiz() throws Exception {
+        Lesson laterLesson = lessonRepository.save(TestDataFactory.createTestLesson(lesson.getTopicId(), 1));
+        String exerciseId = lesson.getExercises().get(0).getId();
+
+        mockMvc.perform(post("/api/lessons/{id}/study/complete", lesson.getId())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.studyCompleted").value(true))
+                .andExpect(jsonPath("$.data.lessonCompleted").value(false));
+
+        mockMvc.perform(get("/api/lessons/{id}", laterLesson.getId())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(post("/api/lessons/{id}/quiz/attempts", lesson.getId())
+                        .header("Authorization", "Bearer " + token)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"answers\":{\"" + exerciseId + "\":\"Alignment\"}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.score").value(100))
+                .andExpect(jsonPath("$.data.passed").value(true));
+
+        mockMvc.perform(get("/api/lessons/{id}", laterLesson.getId())
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk());
     }
 }
