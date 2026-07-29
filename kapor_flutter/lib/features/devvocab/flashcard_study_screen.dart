@@ -1,9 +1,13 @@
+import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/audio/korean_tts_player.dart';
 import 'data/devvocab_service.dart';
 import 'flashcard_summary_screen.dart';
 import 'widgets/vocabulary_flip_card.dart';
@@ -35,6 +39,9 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   String? _errorMessage;
   int _currentIndex = 0;
   Set<String> _savedVocabularyIds = {};
+  List<LessonVocabularyItem> _sessionVocabulary = [];
+  bool _isShuffled = false;
+  bool _isAutoSpeakEnabled = false;
 
   @override
   void initState() {
@@ -61,7 +68,9 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
         _lesson = results[0] as DevVocabLesson;
         _progress = results[1] as FlashcardProgress;
         _savedVocabularyIds = results[2] as Set<String>;
+        _sessionVocabulary = List.of(_lesson!.vocabulary);
         _currentIndex = 0;
+        _isShuffled = false;
         _isLoading = false;
       });
     } catch (error) {
@@ -80,10 +89,10 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       return false;
     }
     final lesson = _lesson;
-    if (lesson == null || _currentIndex >= lesson.vocabulary.length) {
+    if (lesson == null || _currentIndex >= _sessionVocabulary.length) {
       return false;
     }
-    final vocabulary = lesson.vocabulary[_currentIndex];
+    final vocabulary = _sessionVocabulary[_currentIndex];
     if (vocabulary.id.isEmpty) {
       _showError('Thẻ này chưa có ID. Vui lòng lưu lại Lesson trong Admin.');
       return false;
@@ -112,7 +121,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
 
   void _onCardSwiped(_FlashcardDecision _) {
     final lesson = _lesson!;
-    if (_currentIndex == lesson.vocabulary.length - 1) {
+    if (_currentIndex == _sessionVocabulary.length - 1) {
       final progress = _progress!;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) {
@@ -126,6 +135,10 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       return;
     }
     setState(() => _currentIndex += 1);
+    final nextVocabulary = _sessionVocabulary[_currentIndex];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _playVocabularyAutomatically(nextVocabulary);
+    });
   }
 
   Future<void> _undoPreviousCard() async {
@@ -134,7 +147,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       return;
     }
     final previousIndex = _currentIndex - 1;
-    final vocabulary = lesson.vocabulary[previousIndex];
+    final vocabulary = _sessionVocabulary[previousIndex];
     if (vocabulary.id.isEmpty) {
       _showError('Thẻ này chưa có ID. Vui lòng lưu lại Lesson trong Admin.');
       return;
@@ -162,10 +175,10 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     final lesson = _lesson;
     if (_isSavingToMemByte ||
         lesson == null ||
-        _currentIndex >= lesson.vocabulary.length) {
+        _currentIndex >= _sessionVocabulary.length) {
       return;
     }
-    final vocabulary = lesson.vocabulary[_currentIndex];
+    final vocabulary = _sessionVocabulary[_currentIndex];
     if (vocabulary.id.isEmpty) {
       _showError('Thẻ này chưa có ID. Vui lòng lưu lại Lesson trong Admin.');
       return;
@@ -191,6 +204,95 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     }
   }
 
+  void _setShuffle(bool enabled) {
+    final lesson = _lesson;
+    if (lesson == null || _sessionVocabulary.isEmpty) return;
+
+    final completed = _sessionVocabulary.take(_currentIndex).toList();
+    final current = _sessionVocabulary[_currentIndex];
+    final usedKeys = {
+      ...completed.map(_vocabularyKey),
+      _vocabularyKey(current),
+    };
+    final remaining = lesson.vocabulary
+        .where((vocabulary) => !usedKeys.contains(_vocabularyKey(vocabulary)))
+        .toList();
+
+    if (enabled && remaining.length > 1) {
+      final originalOrder = remaining.map(_vocabularyKey).toList();
+      for (var attempt = 0; attempt < 4; attempt += 1) {
+        remaining.shuffle(Random());
+        if (!_hasSameVocabularyOrder(
+          originalOrder,
+          remaining.map(_vocabularyKey).toList(),
+        )) {
+          break;
+        }
+      }
+      if (_hasSameVocabularyOrder(
+        originalOrder,
+        remaining.map(_vocabularyKey).toList(),
+      )) {
+        remaining.setAll(0, remaining.reversed);
+      }
+    }
+
+    setState(() {
+      _sessionVocabulary = [...completed, current, ...remaining];
+      _isShuffled = enabled;
+    });
+  }
+
+  Future<void> _setAutoSpeakEnabled(bool enabled) async {
+    setState(() => _isAutoSpeakEnabled = enabled);
+    if (!enabled) await KoreanTtsPlayer.instance.stop();
+  }
+
+  Future<void> _playVocabularyAutomatically(
+    LessonVocabularyItem vocabulary,
+  ) async {
+    if (!_isAutoSpeakEnabled || vocabulary.korean.trim().isEmpty) return;
+    try {
+      await KoreanTtsPlayer.instance.playOrStop(vocabulary.korean);
+    } on KoreanTtsException {
+      // Automatic audio should not interrupt studying with a toast. Users can
+      // still retry from the speaker button on the card.
+    }
+  }
+
+  String _vocabularyKey(LessonVocabularyItem vocabulary) =>
+      vocabulary.id.isNotEmpty ? vocabulary.id : vocabulary.korean;
+
+  bool _hasSameVocabularyOrder(List<String> first, List<String> second) {
+    if (first.length != second.length) return false;
+    for (var index = 0; index < first.length; index += 1) {
+      if (first[index] != second[index]) return false;
+    }
+    return true;
+  }
+
+  Future<void> _showOptions() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setSheetState) => _FlashcardOptionsSheet(
+          isShuffled: _isShuffled,
+          isAutoSpeakEnabled: _isAutoSpeakEnabled,
+          onShuffleChanged: (enabled) {
+            _setShuffle(enabled);
+            setSheetState(() {});
+          },
+          onAutoSpeakChanged: (enabled) {
+            unawaited(_setAutoSpeakEnabled(enabled));
+            setSheetState(() {});
+          },
+        ),
+      ),
+    );
+  }
+
   void _showError(String message) {
     if (!mounted) {
       return;
@@ -213,7 +315,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       );
     }
 
-    if (lesson.vocabulary.isEmpty) {
+    if (_sessionVocabulary.isEmpty) {
       return Scaffold(
         backgroundColor: const Color(0xFF0D0B35),
         appBar: AppBar(title: Text(lesson.title)),
@@ -226,7 +328,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       );
     }
 
-    final vocabulary = lesson.vocabulary[_currentIndex];
+    final vocabulary = _sessionVocabulary[_currentIndex];
     return Scaffold(
       backgroundColor: const Color(0xFF0D0B35),
       body: SafeArea(
@@ -234,8 +336,9 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
           children: [
             _StudyHeader(
               index: _currentIndex + 1,
-              total: lesson.vocabulary.length,
+              total: _sessionVocabulary.length,
               onClose: () => context.pop(),
+              onOptions: _showOptions,
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 22, 16, 12),
@@ -316,11 +419,13 @@ class _StudyHeader extends StatelessWidget {
   final int index;
   final int total;
   final VoidCallback onClose;
+  final VoidCallback onOptions;
 
   const _StudyHeader({
     required this.index,
     required this.total,
     required this.onClose,
+    required this.onOptions,
   });
 
   @override
@@ -344,8 +449,148 @@ class _StudyHeader extends StatelessWidget {
               ),
             ),
           ),
-          const _RoundIconButton(icon: Icons.settings_outlined),
+          _RoundIconButton(icon: Icons.settings_outlined, onPressed: onOptions),
         ],
+      ),
+    );
+  }
+}
+
+class _FlashcardOptionsSheet extends StatelessWidget {
+  final bool isShuffled;
+  final bool isAutoSpeakEnabled;
+  final ValueChanged<bool> onShuffleChanged;
+  final ValueChanged<bool> onAutoSpeakChanged;
+
+  const _FlashcardOptionsSheet({
+    required this.isShuffled,
+    required this.isAutoSpeakEnabled,
+    required this.onShuffleChanged,
+    required this.onAutoSpeakChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      top: false,
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+        padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+        decoration: const BoxDecoration(
+          color: Color(0xFF101038),
+          borderRadius: BorderRadius.all(Radius.circular(30)),
+          border: Border.fromBorderSide(
+            BorderSide(color: Color(0xFF34355F), width: 1.5),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Row(
+              children: [
+                IconButton(
+                  tooltip: 'Đóng tùy chọn',
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded, color: Colors.white),
+                ),
+                Expanded(
+                  child: Text(
+                    'Tùy chọn',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.outfit(
+                      color: Colors.white,
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 48),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF353D62),
+                borderRadius: BorderRadius.circular(24),
+              ),
+              child: Column(
+                children: [
+                  _OptionSwitchTile(
+                    icon: Icons.shuffle_rounded,
+                    title: 'Trộn thẻ',
+                    subtitle: 'Chỉ thay đổi thứ tự trong lần học này',
+                    value: isShuffled,
+                    onChanged: onShuffleChanged,
+                  ),
+                  const Divider(
+                    indent: 68,
+                    endIndent: 20,
+                    color: Color(0xFF4C557C),
+                    height: 1,
+                  ),
+                  _OptionSwitchTile(
+                    icon: Icons.volume_up_outlined,
+                    title: 'Chuyển văn bản thành lời nói',
+                    subtitle: 'Tự phát âm tiếng Hàn ở thẻ tiếp theo',
+                    value: isAutoSpeakEnabled,
+                    onChanged: onAutoSpeakChanged,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OptionSwitchTile extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _OptionSwitchTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      toggled: value,
+      child: SwitchListTile.adaptive(
+        value: value,
+        onChanged: onChanged,
+        activeTrackColor: const Color(0xFF5CE0B6),
+        activeThumbColor: const Color(0xFF0D0B35),
+        contentPadding: const EdgeInsets.fromLTRB(20, 12, 16, 12),
+        secondary: Icon(icon, color: const Color(0xFFBEC7E8), size: 26),
+        title: Text(
+          title,
+          style: GoogleFonts.outfit(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 3),
+          child: Text(
+            subtitle,
+            style: GoogleFonts.inter(
+              color: const Color(0xFFBBC2DD),
+              fontSize: 12,
+              height: 1.35,
+            ),
+          ),
+        ),
       ),
     );
   }
