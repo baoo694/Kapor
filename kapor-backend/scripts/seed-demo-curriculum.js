@@ -78,8 +78,32 @@ function term(korean, vietnamese, english) {
   return { korean, vietnamese, english };
 }
 
+function hasHangul(value) {
+  return /[\uAC00-\uD7AF]/.test(value || '');
+}
+
+function koreanText(first, second) {
+  return hasHangul(first) ? first : second;
+}
+
+function vietnameseText(first, second) {
+  return hasHangul(first) ? second : first;
+}
+
 function lesson(slug, title, titleVi, goalKo, goalVi, scenarioKo, scenarioVi, actionKo, actionVi, snippet, terms) {
-  return { slug, title, titleVi, goalKo, goalVi, scenarioKo, scenarioVi, actionKo, actionVi, snippet, terms };
+  return {
+    slug,
+    title,
+    titleVi,
+    goalKo: koreanText(goalKo, goalVi),
+    goalVi: vietnameseText(goalKo, goalVi),
+    scenarioKo: koreanText(scenarioKo, scenarioVi),
+    scenarioVi: vietnameseText(scenarioKo, scenarioVi),
+    actionKo: koreanText(actionKo, actionVi),
+    actionVi: vietnameseText(actionKo, actionVi),
+    snippet,
+    terms,
+  };
 }
 
 const curriculum = [

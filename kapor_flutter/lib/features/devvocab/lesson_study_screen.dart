@@ -108,10 +108,9 @@ class _LessonStudyScreenState extends State<LessonStudyScreen> {
                           ),
                         ),
                         const SizedBox(height: 20),
-                        _ContentCard(
-                          content: lesson.contentVi.isNotEmpty
-                              ? lesson.contentVi
-                              : lesson.content,
+                        _BilingualLessonContent(
+                          koreanContent: lesson.content,
+                          vietnameseContent: lesson.contentVi,
                         ),
                         const SizedBox(height: 24),
                         _VocabularySection(vocabulary: lesson.vocabulary),
@@ -144,28 +143,208 @@ class _LessonStudyScreenState extends State<LessonStudyScreen> {
   }
 }
 
-class _ContentCard extends StatelessWidget {
-  final String content;
-  const _ContentCard({required this.content});
+class _BilingualLessonContent extends StatelessWidget {
+  final String koreanContent;
+  final String vietnameseContent;
+
+  const _BilingualLessonContent({
+    required this.koreanContent,
+    required this.vietnameseContent,
+  });
 
   @override
+  Widget build(BuildContext context) {
+    final koreanSections = _parseSections(koreanContent);
+    final vietnameseSections = _parseSections(vietnameseContent);
+    final sectionCount = koreanSections.length > vietnameseSections.length
+        ? koreanSections.length
+        : vietnameseSections.length;
+    if (sectionCount == 0) {
+      return const _StudyMessage(
+        message: 'Nội dung bài học đang được cập nhật.',
+      );
+    }
+
+    return Column(
+      children: List.generate(sectionCount, (index) {
+        final korean = index < koreanSections.length
+            ? koreanSections[index]
+            : const _StudySection();
+        final vietnamese = index < vietnameseSections.length
+            ? vietnameseSections[index]
+            : const _StudySection();
+        return Padding(
+          padding: EdgeInsets.only(bottom: index == sectionCount - 1 ? 0 : 14),
+          child: _BilingualSectionCard(korean: korean, vietnamese: vietnamese),
+        );
+      }),
+    );
+  }
+}
+
+class _BilingualSectionCard extends StatelessWidget {
+  final _StudySection korean;
+  final _StudySection vietnamese;
+
+  const _BilingualSectionCard({required this.korean, required this.vietnamese});
+
+  @override
+  Widget build(BuildContext context) {
+    final koreanTitle = _hasHangul(korean.title)
+        ? korean.title
+        : vietnamese.title;
+    final vietnameseTitle = _hasHangul(korean.title)
+        ? vietnamese.title
+        : korean.title;
+    final koreanBody = _hasHangul(korean.body) ? korean.body : vietnamese.body;
+    final vietnameseBody = _hasHangul(korean.body)
+        ? vietnamese.body
+        : korean.body;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: const Color(0xFF18213B),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFF6B82FF).withValues(alpha: .32),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            koreanTitle,
+            style: GoogleFonts.outfit(
+              color: Colors.white,
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (vietnameseTitle.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(
+              vietnameseTitle,
+              style: GoogleFonts.inter(
+                color: AppTheme.primary,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          _LanguageContent(
+            label: '한국어',
+            content: koreanBody,
+            color: const Color(0xFFE7E9F4),
+          ),
+          if (koreanBody.isNotEmpty && vietnameseBody.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              child: Divider(
+                color: Colors.white.withValues(alpha: .09),
+                height: 1,
+              ),
+            ),
+          _LanguageContent(
+            label: 'TIẾNG VIỆT',
+            content: vietnameseBody,
+            color: const Color(0xFFBFC8E3),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _LanguageContent extends StatelessWidget {
+  final String label;
+  final String content;
+  final Color color;
+
+  const _LanguageContent({
+    required this.label,
+    required this.content,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (content.isEmpty) return const SizedBox.shrink();
+    final lines = content.split('\n').where((line) => line.trim().isNotEmpty);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: GoogleFonts.jetBrainsMono(
+            color: AppTheme.textSecondary,
+            fontSize: 10,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 6),
+        ...lines.map(
+          (line) => Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Text(
+              line.replaceFirst(RegExp(r'^\d+\.\s*'), '• '),
+              style: GoogleFonts.inter(color: color, height: 1.6, fontSize: 15),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _StudyMessage extends StatelessWidget {
+  final String message;
+  const _StudyMessage({required this.message});
+  @override
   Widget build(BuildContext context) => Container(
+    width: double.infinity,
     padding: const EdgeInsets.all(20),
     decoration: BoxDecoration(
       color: const Color(0xFF18213B),
       borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: const Color(0xFF6B82FF).withValues(alpha: .32)),
     ),
-    child: Text(
-      content.isEmpty ? 'Nội dung bài học đang được cập nhật.' : content,
-      style: GoogleFonts.inter(
-        color: const Color(0xFFE5E8F5),
-        height: 1.7,
-        fontSize: 15,
-      ),
-    ),
+    child: Text(message, style: const TextStyle(color: AppTheme.textSecondary)),
   );
 }
+
+class _StudySection {
+  final String title;
+  final String body;
+  const _StudySection({this.title = '', this.body = ''});
+}
+
+List<_StudySection> _parseSections(String markdown) {
+  if (markdown.trim().isEmpty) return const [];
+  final sections = <_StudySection>[];
+  String title = '';
+  final body = <String>[];
+
+  void saveSection() {
+    if (title.isNotEmpty || body.isNotEmpty) {
+      sections.add(_StudySection(title: title, body: body.join('\n').trim()));
+    }
+  }
+
+  for (final line in markdown.split('\n')) {
+    final header = RegExp(r'^\s{0,3}#{1,6}\s+(.+?)\s*$').firstMatch(line);
+    if (header != null) {
+      saveSection();
+      title = header.group(1) ?? '';
+      body.clear();
+    } else {
+      body.add(line);
+    }
+  }
+  saveSection();
+  return sections;
+}
+
+bool _hasHangul(String value) => RegExp(r'[\uAC00-\uD7AF]').hasMatch(value);
 
 class _VocabularySection extends StatelessWidget {
   final List<LessonVocabularyItem> vocabulary;
