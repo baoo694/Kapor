@@ -1,0 +1,44 @@
+name: Backend CI
+
+on:
+  pull_request:
+    paths:
+      - 'kapor-backend/**'
+      - '.github/workflows/backend-ci.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'kapor-backend/**'
+      - '.github/workflows/backend-ci.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    name: Test and build backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: kapor-backend
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+
+      - name: Run tests and package the application
+        run: mvn --batch-mode --no-transfer-progress verify
+
+      - name: Build the API Docker image
+        run: docker build --tag kapor-api:ci .

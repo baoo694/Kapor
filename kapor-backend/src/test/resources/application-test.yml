@@ -36,6 +36,17 @@ de:
       - org.springframework.boot.autoconfigure.data.redis.RedisAutoConfiguration
       - org.springframework.boot.autoconfigure.data.redis.RedisRepositoriesAutoConfiguration
 
+# Redis and SMTP are not started for embedded-Mongo integration tests. Keeping
+# their health contributors disabled lets /actuator/health test endpoint
+# authorization rather than fail because intentionally absent dependencies are
+# DOWN.
+management:
+  health:
+    redis:
+      enabled: false
+    mail:
+      enabled: false
+
 # JWT Configuration for tests
 jwt:
   secret: dGVzdC1zZWNyZXQta2V5LWZvci1rYXBvci1iYWNrZW5kLXRlc3RzLW11c3QtYmUtYXQtbGVhc3QtMjU2LWJpdHM=

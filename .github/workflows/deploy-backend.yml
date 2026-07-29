@@ -1,0 +1,82 @@
+name: Deploy Backend
+
+on:
+  workflow_run:
+    workflows: ['Backend CI']
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Keep deploys ordered: an older successful run must finish before the newer
+  # commit replaces it on the VM.
+  group: backend-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy kapor-api to VM
+    # workflow_run has access to secrets, so never deploy a failed run. The
+    # manual dispatch route is retained for a deliberate redeploy of main.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DEPLOY_SHA: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
+      VM_HOST: ${{ secrets.VM_HOST }}
+      VM_USER: ${{ secrets.VM_USER }}
+      VM_DEPLOY_PATH: ${{ secrets.VM_DEPLOY_PATH }}
+
+    steps:
+      - name: Configure trusted SSH connection
+        id: ssh
+        env:
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+          VM_KNOWN_HOSTS: ${{ secrets.VM_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          if [ -z "$VM_HOST" ] || [ -z "$VM_USER" ] || \
+             [ -z "$VM_DEPLOY_PATH" ] || [ -z "$VM_SSH_KEY" ] || \
+             [ -z "$VM_KNOWN_HOSTS" ]; then
+            echo 'ready=false' >> "$GITHUB_OUTPUT"
+            echo '::notice::Deployment skipped: configure the production environment secrets first.'
+            exit 0
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          printf '%s\n' "$VM_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          echo 'ready=true' >> "$GITHUB_OUTPUT"
+
+      - name: Deploy the tested commit and verify health
+        if: steps.ssh.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          remote_path=$(printf '%q' "$VM_DEPLOY_PATH")
+          remote_sha=$(printf '%q' "$DEPLOY_SHA")
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            "$VM_USER@$VM_HOST" "bash -s -- $remote_path $remote_sha" <<'REMOTE'
+          set -euo pipefail
+          deploy_path="$1"
+          deploy_sha="$2"
+
+          cd "$deploy_path"
+          git fetch origin main
+          git cat-file -e "${deploy_sha}^{commit}"
+          git switch main
+          git merge --ff-only "$deploy_sha"
+
+          cd kapor-backend
+          test -f .env.local
+          docker compose --env-file .env.local up -d --build kapor-api
+          docker compose ps --status running --services | grep -Fx 'kapor-api'
+          curl --fail --silent --show-error --retry 12 --retry-delay 5 \
+            http://localhost:8080/actuator/health
+          REMOTE
