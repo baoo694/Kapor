@@ -146,7 +146,7 @@ class _DevVocabLessonScreenState extends State<DevVocabLessonScreen> {
           lesson: lesson,
           position: index,
           progress: _progressByLesson[lesson.id],
-          isNextLesson: !isLocked && lesson.id == _nextLessonId(),
+          isNextLesson: !isLocked && _isLessonNotStarted(lesson),
           isLocked: isLocked,
           showConnector: index < _lessons.length,
           onTap: () {
@@ -177,11 +177,10 @@ class _DevVocabLessonScreenState extends State<DevVocabLessonScreen> {
         progress.knownCards >= progress.totalCards;
   }
 
-  String? _nextLessonId() {
-    for (final lesson in _lessons) {
-      if (!_isLessonCompleted(lesson)) return lesson.id;
-    }
-    return null;
+  bool _isLessonNotStarted(DevVocabLesson lesson) {
+    if (lesson.vocabulary.isEmpty || _isLessonCompleted(lesson)) return false;
+    final progress = _progressByLesson[lesson.id];
+    return (progress?.knownCards ?? 0) + (progress?.learningCards ?? 0) == 0;
   }
 }
 
@@ -402,7 +401,10 @@ class _LessonListCardState extends State<_LessonListCard> {
                       color: AppTheme.textSecondary,
                     ),
                   ],
-                  if (!widget.isLocked && widget.isNextLesson) ...[
+                  if (!widget.isLocked &&
+                      widget.isNextLesson &&
+                      !_isInProgress &&
+                      !_isCompleted) ...[
                     const Spacer(),
                     _StatusLabel(label: 'Bắt đầu', color: AppTheme.primary),
                   ],
