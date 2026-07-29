@@ -20,4 +20,9 @@ public interface FlashcardProgressRepository extends MongoRepository<FlashcardPr
             String vocabularyId);
 
     void deleteByUserIdAndLessonId(String userId, String lessonId);
+
+    void deleteByUserIdAndLessonIdAndVocabularyId(
+            String userId,
+            String lessonId,
+            String vocabularyId);
 }

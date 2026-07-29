@@ -29,6 +29,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
   FlashcardProgress? _progress;
   bool _isLoading = true;
   bool _isSaving = false;
+  bool _isUndoing = false;
   bool _isSavingToMemByte = false;
   String? _errorMessage;
   int _currentIndex = 0;
@@ -126,6 +127,36 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       return;
     }
     setState(() => _currentIndex += 1);
+  }
+
+  Future<void> _undoPreviousCard() async {
+    final lesson = _lesson;
+    if (_isUndoing || _isSaving || lesson == null || _currentIndex == 0) {
+      return;
+    }
+    final previousIndex = _currentIndex - 1;
+    final vocabulary = lesson.vocabulary[previousIndex];
+    if (vocabulary.id.isEmpty) {
+      _showError('Thẻ này chưa có ID. Vui lòng lưu lại Lesson trong Admin.');
+      return;
+    }
+
+    setState(() => _isUndoing = true);
+    try {
+      final progress = await _devVocabService.resetFlashcardStatus(
+        lessonId: lesson.id,
+        vocabularyId: vocabulary.id,
+      );
+      if (!mounted) return;
+      setState(() {
+        _progress = progress;
+        _currentIndex = previousIndex;
+      });
+    } catch (error) {
+      _showError(error.toString().replaceFirst('Exception: ', ''));
+    } finally {
+      if (mounted) setState(() => _isUndoing = false);
+    }
   }
 
   Future<void> _saveCurrentVocabulary() async {
@@ -265,25 +296,30 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(36, 8, 36, 28),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '← Vuốt trái: Đang học',
-                    style: GoogleFonts.inter(
-                      color: const Color(0xFFFFB66D),
-                      fontSize: 12,
-                    ),
+              padding: const EdgeInsets.fromLTRB(28, 8, 28, 28),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: IconButton(
+                  tooltip: _currentIndex == 0
+                      ? 'Chưa có thẻ trước đó'
+                      : 'Quay lại thẻ trước',
+                  onPressed: _currentIndex == 0 || _isUndoing
+                      ? null
+                      : _undoPreviousCard,
+                  style: IconButton.styleFrom(
+                    backgroundColor: const Color(0xFF25254A),
+                    foregroundColor: Colors.white,
+                    disabledForegroundColor: const Color(0xFF747894),
+                    padding: const EdgeInsets.all(12),
                   ),
-                  Text(
-                    'Đã biết: Vuốt phải →',
-                    style: GoogleFonts.inter(
-                      color: const Color(0xFF83ECD0),
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
+                  icon: _isUndoing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.undo_rounded, size: 25),
+                ),
               ),
             ),
           ],

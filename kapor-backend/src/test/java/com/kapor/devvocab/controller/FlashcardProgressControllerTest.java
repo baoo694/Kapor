@@ -95,6 +95,12 @@ class FlashcardProgressControllerTest {
                 .andExpect(jsonPath("$.data.knownCards").value(1))
                 .andExpect(jsonPath("$.data.learningCards").value(1));
 
+        mockMvc.perform(delete("/api/lessons/{id}/flashcards/{vocabularyId}", lesson.getId(), firstVocabularyId)
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.knownCards").value(0))
+                .andExpect(jsonPath("$.data.learningCards").value(1));
+
         mockMvc.perform(delete("/api/lessons/{id}/flashcards/progress", lesson.getId())
                         .header("Authorization", "Bearer " + token))
                 .andExpect(status().isOk())

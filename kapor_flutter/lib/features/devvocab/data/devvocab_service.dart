@@ -386,6 +386,22 @@ class DevVocabService {
     }
   }
 
+  Future<FlashcardProgress> resetFlashcardStatus({
+    required String lessonId,
+    required String vocabularyId,
+  }) async {
+    try {
+      final response = await _dio.delete(
+        '/lessons/$lessonId/flashcards/$vocabularyId',
+      );
+      return _flashcardProgressFromResponse(response.data);
+    } on DioException catch (error) {
+      throw Exception(
+        _messageFromError(error, 'Không thể đặt lại trạng thái thẻ.'),
+      );
+    }
+  }
+
   Future<LessonActivityProgress> getActivityProgress(String lessonId) async {
     try {
       final response = await _dio.get('/lessons/$lessonId/activity-progress');

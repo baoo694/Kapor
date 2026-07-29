@@ -128,6 +128,17 @@ public class LessonController {
                 "Flashcard progress reset"));
     }
 
+    @DeleteMapping("/{id}/flashcards/{vocabularyId}")
+    public ResponseEntity<ApiResponse<FlashcardProgressDto>> resetFlashcardStatus(
+            @PathVariable String id,
+            @PathVariable String vocabularyId,
+            Authentication authentication) {
+        return ResponseEntity.ok(ApiResponse.ok(
+                flashcardProgressService.resetCardProgress(
+                        getUserId(authentication), id, vocabularyId),
+                "Flashcard status reset"));
+    }
+
     private String getUserId(Authentication authentication) {
         return ((CustomUserDetails) authentication.getPrincipal()).getUser().getId();
     }

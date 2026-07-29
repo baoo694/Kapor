@@ -62,6 +62,20 @@ public class FlashcardProgressService {
         return toDto(lesson, List.of());
     }
 
+    public FlashcardProgressDto resetCardProgress(
+            String userId, String lessonId, String vocabularyId) {
+        Lesson lesson = getLesson(lessonId);
+        boolean vocabularyExists = lesson.getVocabulary() != null && lesson.getVocabulary().stream()
+                .anyMatch(item -> vocabularyId.equals(item.getId()));
+        if (!vocabularyExists) {
+            throw new ResourceNotFoundException("Vocabulary", "id", vocabularyId);
+        }
+        flashcardProgressRepository.deleteByUserIdAndLessonIdAndVocabularyId(
+                userId, lessonId, vocabularyId);
+        lessonActivityProgressService.syncTopicProgress(userId, lesson.getTopicId());
+        return getProgress(userId, lessonId);
+    }
+
     /**
      * Returns a lesson only when every earlier lesson in the same topic has
      * been completed. Keep this check in the service so deep links and direct
