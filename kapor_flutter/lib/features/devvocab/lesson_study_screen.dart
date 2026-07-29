@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../../core/audio/korean_tts_player.dart';
 import '../../core/theme/app_theme.dart';
 import 'data/devvocab_service.dart';
 
@@ -372,26 +373,96 @@ class _VocabularySection extends StatelessWidget {
             borderRadius: BorderRadius.circular(14),
           ),
           child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Expanded(
-                child: Text(
-                  word.korean,
-                  style: GoogleFonts.outfit(
-                    color: Colors.white,
-                    fontSize: 17,
-                    fontWeight: FontWeight.w700,
-                  ),
+                flex: 5,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      word.korean,
+                      style: GoogleFonts.outfit(
+                        color: Colors.white,
+                        fontSize: 17,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    if (word.pronunciation.isNotEmpty) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        '/${word.pronunciation}/',
+                        style: GoogleFonts.jetBrainsMono(
+                          color: const Color(0xFFAEB8D9),
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              Text(
-                word.vietnamese,
-                style: GoogleFonts.inter(color: AppTheme.textSecondary),
+              _VocabularyPronunciationButton(korean: word.korean),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 5,
+                child: Text(
+                  word.vietnamese,
+                  textAlign: TextAlign.right,
+                  style: GoogleFonts.inter(
+                    color: AppTheme.textSecondary,
+                    fontSize: 13,
+                  ),
+                ),
               ),
             ],
           ),
         ),
       ),
     ],
+  );
+}
+
+class _VocabularyPronunciationButton extends StatelessWidget {
+  final String korean;
+
+  const _VocabularyPronunciationButton({required this.korean});
+
+  Future<void> _play(BuildContext context) async {
+    try {
+      await KoreanTtsPlayer.instance.playOrStop(korean);
+    } on KoreanTtsException catch (error) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.message)));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder<String?>(
+    valueListenable: KoreanTtsPlayer.instance.activeText,
+    builder: (context, activeText, child) {
+      final isPlaying = activeText == korean;
+      return Semantics(
+        button: true,
+        label: isPlaying ? 'Dừng phát âm $korean' : 'Nghe phát âm $korean',
+        child: IconButton(
+          tooltip: isPlaying ? 'Dừng phát âm' : 'Nghe phát âm',
+          onPressed: () => _play(context),
+          style: IconButton.styleFrom(
+            backgroundColor: AppTheme.primary.withValues(alpha: .12),
+            foregroundColor: AppTheme.primary,
+          ),
+          icon: isPlaying
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.volume_up_outlined, size: 20),
+        ),
+      );
+    },
   );
 }
 
