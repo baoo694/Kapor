@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -74,7 +75,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     }
   }
 
-  Future<bool> _confirmDismiss(DismissDirection direction) async {
+  Future<bool> _recordSwipe(_FlashcardDecision decision) async {
     if (_isSaving) {
       return false;
     }
@@ -88,9 +89,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
       return false;
     }
 
-    final status = direction == DismissDirection.startToEnd
-        ? 'KNOWN'
-        : 'LEARNING';
+    final status = decision == _FlashcardDecision.known ? 'KNOWN' : 'LEARNING';
     setState(() => _isSaving = true);
     try {
       final progress = await _devVocabService.updateFlashcardStatus(
@@ -111,7 +110,7 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
     }
   }
 
-  void _onCardDismissed(DismissDirection _) {
+  void _onCardSwiped(_FlashcardDecision _) {
     final lesson = _lesson!;
     if (_currentIndex == lesson.vocabulary.length - 1) {
       final progress = _progress!;
@@ -262,27 +261,11 @@ class _FlashcardStudyScreenState extends State<FlashcardStudyScreen> {
             Expanded(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(28, 20, 28, 12),
-                child: Dismissible(
+                child: _QuizletStyleSwipeCard(
                   key: ValueKey('study-${vocabulary.id}'),
-                  direction: DismissDirection.horizontal,
-                  dismissThresholds: const {
-                    DismissDirection.startToEnd: 0.28,
-                    DismissDirection.endToStart: 0.28,
-                  },
-                  confirmDismiss: _confirmDismiss,
-                  onDismissed: _onCardDismissed,
-                  background: _SwipeBackground(
-                    alignment: Alignment.centerLeft,
-                    color: const Color(0xFF5CE0B6),
-                    icon: Icons.check_rounded,
-                    label: 'Đã biết',
-                  ),
-                  secondaryBackground: _SwipeBackground(
-                    alignment: Alignment.centerRight,
-                    color: const Color(0xFFFF9A36),
-                    icon: Icons.replay_rounded,
-                    label: 'Đang học',
-                  ),
+                  isSaving: _isSaving,
+                  onSwipe: _recordSwipe,
+                  onSwiped: _onCardSwiped,
                   child: VocabularyFlipCard(
                     vocabulary: vocabulary,
                     showActions: true,
@@ -434,36 +417,288 @@ class _StatusPill extends StatelessWidget {
   }
 }
 
-class _SwipeBackground extends StatelessWidget {
-  final Alignment alignment;
-  final Color color;
-  final IconData icon;
-  final String label;
+enum _FlashcardDecision { known, learning }
 
-  const _SwipeBackground({
-    required this.alignment,
-    required this.color,
-    required this.icon,
-    required this.label,
+/// A card interaction inspired by Quizlet's swipe flow: the card follows the
+/// finger, rotates slightly, and reveals a clear decision surface underneath.
+/// The progress update is still confirmed by the API before the card exits.
+class _QuizletStyleSwipeCard extends StatefulWidget {
+  final Widget child;
+  final bool isSaving;
+  final Future<bool> Function(_FlashcardDecision decision) onSwipe;
+  final ValueChanged<_FlashcardDecision> onSwiped;
+
+  const _QuizletStyleSwipeCard({
+    super.key,
+    required this.child,
+    required this.isSaving,
+    required this.onSwipe,
+    required this.onSwiped,
+  });
+
+  @override
+  State<_QuizletStyleSwipeCard> createState() => _QuizletStyleSwipeCardState();
+}
+
+class _QuizletStyleSwipeCardState extends State<_QuizletStyleSwipeCard>
+    with SingleTickerProviderStateMixin {
+  static const _commitFraction = 0.24;
+  static const _flingVelocity = 850.0;
+
+  late final AnimationController _motionController;
+  double _dragOffset = 0;
+  double _cardWidth = 1;
+  bool _hasTriggeredHaptic = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _motionController = AnimationController(vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _motionController.dispose();
+    super.dispose();
+  }
+
+  _FlashcardDecision get _decision =>
+      _dragOffset >= 0 ? _FlashcardDecision.known : _FlashcardDecision.learning;
+
+  double get _dragProgress => (_dragOffset.abs() / _cardWidth).clamp(0.0, 1.0);
+
+  bool get _hasReachedCommitPoint => _dragProgress >= _commitFraction;
+
+  void _onDragStart(DragStartDetails _) {
+    if (widget.isSaving) return;
+    _motionController.stop(canceled: false);
+  }
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    if (widget.isSaving) return;
+    final nextOffset = (_dragOffset + details.delta.dx).clamp(
+      -_cardWidth * 0.92,
+      _cardWidth * 0.92,
+    );
+    final wasPastCommitPoint = _hasReachedCommitPoint;
+    setState(() => _dragOffset = nextOffset);
+
+    if (!wasPastCommitPoint && _hasReachedCommitPoint && !_hasTriggeredHaptic) {
+      HapticFeedback.selectionClick();
+      _hasTriggeredHaptic = true;
+    } else if (!_hasReachedCommitPoint) {
+      _hasTriggeredHaptic = false;
+    }
+  }
+
+  Future<void> _onDragEnd(DragEndDetails details) async {
+    if (widget.isSaving) return;
+    final shouldCommit =
+        _hasReachedCommitPoint ||
+        (details.velocity.pixelsPerSecond.dx.abs() > _flingVelocity &&
+            _dragProgress > 0.08);
+    setState(() {
+      _hasTriggeredHaptic = false;
+    });
+
+    if (!shouldCommit) {
+      await _animateTo(0, const Duration(milliseconds: 260));
+      return;
+    }
+
+    final decision = _decision;
+    final accepted = await widget.onSwipe(decision);
+    if (!mounted) return;
+    if (!accepted) {
+      await _animateTo(0, const Duration(milliseconds: 280));
+      return;
+    }
+
+    final destination =
+        (decision == _FlashcardDecision.known ? 1 : -1) * _cardWidth * 1.35;
+    await _animateTo(destination, const Duration(milliseconds: 330));
+    if (mounted) widget.onSwiped(decision);
+  }
+
+  void _onDragCancel() {
+    if (widget.isSaving) return;
+    setState(() => _hasTriggeredHaptic = false);
+    _animateTo(0, const Duration(milliseconds: 220));
+  }
+
+  Future<void> _animateTo(double target, Duration duration) async {
+    if (_dragOffset == target) return;
+    if (MediaQuery.maybeOf(context)?.disableAnimations ?? false) {
+      setState(() => _dragOffset = target);
+      return;
+    }
+    final animation = Tween<double>(begin: _dragOffset, end: target).animate(
+      CurvedAnimation(parent: _motionController, curve: Curves.easeOutCubic),
+    );
+    void listener() {
+      if (mounted) setState(() => _dragOffset = animation.value);
+    }
+
+    _motionController
+      ..stop()
+      ..reset()
+      ..duration = duration
+      ..addListener(listener);
+    try {
+      await _motionController.forward();
+    } finally {
+      _motionController.removeListener(listener);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _cardWidth = constraints.maxWidth;
+        final progress = _dragProgress;
+        final decision = _decision;
+        final isKnown = decision == _FlashcardDecision.known;
+        final accent = isKnown
+            ? const Color(0xFF5CE0B6)
+            : const Color(0xFFFF9A36);
+        final reduceMotion =
+            MediaQuery.maybeOf(context)?.disableAnimations ?? false;
+        final rotation = reduceMotion ? 0.0 : _dragOffset / _cardWidth * 0.115;
+
+        return Semantics(
+          label:
+              'Thẻ ghi nhớ. Kéo sang phải để đánh dấu đã biết, kéo sang trái để đánh dấu đang học.',
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragStart: _onDragStart,
+            onHorizontalDragUpdate: _onDragUpdate,
+            onHorizontalDragEnd: _onDragEnd,
+            onHorizontalDragCancel: _onDragCancel,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                _SwipeDecisionBackdrop(decision: decision, progress: progress),
+                Transform.translate(
+                  offset: Offset(_dragOffset, 0),
+                  child: Transform.rotate(
+                    angle: rotation,
+                    alignment: _dragOffset >= 0
+                        ? Alignment.bottomLeft
+                        : Alignment.bottomRight,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        widget.child,
+                        IgnorePointer(
+                          child: Opacity(
+                            opacity: (progress * 1.45).clamp(0.0, 1.0),
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(28),
+                                border: Border.all(color: accent, width: 4),
+                                color: accent.withValues(alpha: 0.055),
+                              ),
+                              child: Align(
+                                alignment: isKnown
+                                    ? Alignment.centerLeft
+                                    : Alignment.centerRight,
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 30,
+                                  ),
+                                  child: _CardDecisionLabel(
+                                    decision: decision,
+                                    scale: 0.9 + (progress * 0.25),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                if (widget.isSaving)
+                  const IgnorePointer(
+                    child: Center(
+                      child: CircularProgressIndicator(color: Colors.white),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SwipeDecisionBackdrop extends StatelessWidget {
+  final _FlashcardDecision decision;
+  final double progress;
+
+  const _SwipeDecisionBackdrop({
+    required this.decision,
+    required this.progress,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      alignment: alignment,
-      padding: const EdgeInsets.symmetric(horizontal: 30),
+    final isKnown = decision == _FlashcardDecision.known;
+    final color = isKnown ? const Color(0xFF5CE0B6) : const Color(0xFFFF9A36);
+    return DecoratedBox(
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
+        color: color.withValues(alpha: 0.10 + (progress * 0.20)),
         borderRadius: BorderRadius.circular(28),
       ),
-      child: Row(
+      child: Align(
+        alignment: isKnown ? Alignment.centerLeft : Alignment.centerRight,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 22),
+          child: Opacity(
+            opacity: (progress * 1.8).clamp(0.0, 1.0),
+            child: _CardDecisionLabel(decision: decision, scale: 1),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CardDecisionLabel extends StatelessWidget {
+  final _FlashcardDecision decision;
+  final double scale;
+
+  const _CardDecisionLabel({required this.decision, required this.scale});
+
+  @override
+  Widget build(BuildContext context) {
+    final isKnown = decision == _FlashcardDecision.known;
+    final color = isKnown ? const Color(0xFF5CE0B6) : const Color(0xFFFF9A36);
+    return Transform.scale(
+      scale: scale,
+      alignment: isKnown ? Alignment.centerLeft : Alignment.centerRight,
+      child: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: isKnown
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.end,
         children: [
-          Icon(icon, color: color, size: 30),
-          const SizedBox(width: 8),
+          Icon(
+            isKnown ? Icons.check_circle_rounded : Icons.replay_rounded,
+            color: color,
+            size: 42,
+          ),
+          const SizedBox(height: 8),
           Text(
-            label,
-            style: TextStyle(color: color, fontWeight: FontWeight.w700),
+            isKnown ? 'Đã biết' : 'Đang học',
+            style: GoogleFonts.outfit(
+              color: color,
+              fontSize: 23,
+              fontWeight: FontWeight.w800,
+            ),
           ),
         ],
       ),
