@@ -6,5 +6,6 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 import java.util.List;
 
 public interface TechTalkScenarioRepository extends MongoRepository<TechTalkScenario, String> {
-    List<TechTalkScenario> findByActiveTrue();
+    List<TechTalkScenario> findByActiveTrueOrderByOrderAsc();
+    boolean existsByPromptTemplateId(String promptTemplateId);
 }

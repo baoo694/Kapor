@@ -10,3 +10,7 @@ kapor-backend/target/
 .env.*
 !.env.example
 !kapor-admin/.env.production.example
+
+# Runtime database backups can contain production data and must not be versioned.
+backups/
+kapor-backend/backups/

@@ -73,9 +73,24 @@ export type AdminVideoPayload = {
 };
 
 export type AdminScenarioPayload = {
-  id?: string; title: string; titleVi?: string; domain: string; difficulty: string; missionVi?: string;
-  persona?: { name?: string; role?: string; company?: string; avatar?: string };
-  objectives?: string[]; requiredVocabulary?: string[]; active: boolean;
+  id?: string; title: string; titleVi: string; domain: string; difficulty: string; order: number; missionVi?: string;
+  persona: {
+    name?: string; role?: string; company?: string; avatar?: string; avatarUrl?: string;
+    speechStyle?: string; personality?: string;
+  };
+  mission: {
+    titleKo?: string; titleVi?: string; contextPrompt?: string;
+    objectives: { ko?: string; vi?: string; en?: string }[];
+    requiredVocabulary: string[];
+  };
+  objectives: string[];
+  requiredVocabulary: string[];
+  evaluationCriteria: {
+    grammarWeight: number; vocabularyWeight: number; politenessWeight: number; taskCompletionWeight: number;
+  };
+  promptTemplateId?: string;
+  promptOverride?: string;
+  active: boolean;
 };
 
 export type AdminDictionaryPayload = {
@@ -88,7 +103,25 @@ export type AdminPronunciationPayload = {
   sentences: { text: string; translationVi?: string; audioUrl?: string; waveformData?: number[] }[];
 };
 
-export type AdminPromptPayload = { id?: string; name: string; description?: string; content: string };
+export type AdminPromptPayload = {
+  id?: string; key?: string; name: string; description?: string; content: string;
+  promptVersion?: number; status?: 'draft' | 'published' | 'archived'; updatedBy?: string;
+  requiredPlaceholders?: string[]; documentVersion?: number; createdAt?: string; updatedAt?: string;
+};
+
+export type RoleplayTestMessage = {
+  id: string; role: 'ai' | 'user'; content: string; generationStatus?: string;
+};
+
+export type RoleplayTestSession = {
+  id: string; scenarioId: string; status: string; testMode: boolean; messages: RoleplayTestMessage[];
+};
+
+export type RoleplayStreamEvent = {
+  type: string; sessionId?: string; turnId?: string; userMessageId?: string; messageId?: string;
+  delta?: string; message?: RoleplayTestMessage; evaluation?: unknown; code?: string;
+  messageText?: string; retryable?: boolean;
+};
 
 const getHeaders = () => {
   const token = localStorage.getItem('kapor_admin_token');
@@ -386,6 +419,56 @@ export const api = {
   getPrompts: async (): Promise<AdminPromptPayload[]> => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/prompts`, { headers: getHeaders() })),
   createPrompt: async (data: AdminPromptPayload) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/prompts`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) })),
   updatePrompt: async (id: string, data: AdminPromptPayload) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/prompts/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) })),
+  clonePrompt: async (id: string): Promise<AdminPromptPayload> => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/prompts/${id}/clone`, { method: 'POST', headers: getHeaders() })),
+  publishPrompt: async (id: string): Promise<AdminPromptPayload> => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/prompts/${id}/publish`, { method: 'POST', headers: getHeaders() })),
+  deletePrompt: async (id: string) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/prompts/${id}`, { method: 'DELETE', headers: getHeaders() })),
+
+  startRoleplayTest: async (scenarioId: string): Promise<RoleplayTestSession> => handleResponse(await fetchWithAuth(`${API_BASE}/api/roleplay/start`, {
+    method: 'POST',
+    headers: getHeaders(),
+    body: JSON.stringify({ scenarioId, testMode: true })
+  })),
+  streamRoleplayTurn: async (
+    sessionId: string,
+    payload: { clientTurnId: string; content: string },
+    onEvent: (event: RoleplayStreamEvent) => void
+  ): Promise<void> => {
+    const response = await fetchWithAuth(`${API_BASE}/api/roleplay/${sessionId}/turns/stream`, {
+      method: 'POST',
+      headers: { ...getHeaders(), Accept: 'text/event-stream' },
+      body: JSON.stringify({ ...payload, source: 'text' })
+    });
+    if (!response.ok || !response.body) {
+      await handleResponse(response);
+      throw new Error('Streaming response is unavailable');
+    }
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      buffer += decoder.decode(value, { stream: !done }).replace(/\r\n/g, '\n');
+      const blocks = buffer.split('\n\n');
+      buffer = blocks.pop() ?? '';
+      for (const block of blocks) {
+        const data = block
+          .split('\n')
+          .filter(line => line.startsWith('data:'))
+          .map(line => line.slice(5).trimStart())
+          .join('\n');
+        if (data) onEvent(JSON.parse(data) as RoleplayStreamEvent);
+      }
+      if (done) break;
+    }
+    const tail = buffer
+      .split('\n')
+      .filter(line => line.startsWith('data:'))
+      .map(line => line.slice(5).trimStart())
+      .join('\n');
+    if (tail) onEvent(JSON.parse(tail) as RoleplayStreamEvent);
+  },
+  endRoleplayTest: async (sessionId: string): Promise<RoleplayTestSession> => handleResponse(await fetchWithAuth(`${API_BASE}/api/roleplay/${sessionId}/end`, { method: 'POST', headers: getHeaders() })),
+  abandonRoleplayTest: async (sessionId: string): Promise<RoleplayTestSession> => handleResponse(await fetchWithAuth(`${API_BASE}/api/roleplay/${sessionId}/abandon`, { method: 'POST', headers: getHeaders() })),
   getAdmins: async () => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/admins`, { headers: getHeaders() })),
   grantAdmin: async (email: string) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/admins`, { method: 'POST', headers: getHeaders(), body: JSON.stringify({ email }) })),
   revokeAdmin: async (id: string) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/admins/${id}`, { method: 'DELETE', headers: getHeaders() })),

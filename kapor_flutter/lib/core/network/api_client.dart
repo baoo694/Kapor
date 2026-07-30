@@ -80,8 +80,10 @@ class ApiClient {
     dio.interceptors.add(
       LogInterceptor(
         request: true,
-        requestBody: true,
-        responseBody: true,
+        // Authentication payloads, learner transcripts, and AI feedback can
+        // contain sensitive data. Keep diagnostics at metadata level only.
+        requestBody: false,
+        responseBody: false,
         responseHeader: false,
       ),
     );

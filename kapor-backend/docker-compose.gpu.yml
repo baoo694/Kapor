@@ -1,0 +1,21 @@
+# GPU-only override. Keep docker-compose.yml CPU-compatible for local
+# development, then include this file on an NVIDIA GPU VM.
+services:
+  kapor-nlp:
+    build:
+      context: ./kapor-nlp
+      dockerfile: Dockerfile.gpu
+    environment:
+      WHISPERX_DEVICE: cuda
+      WHISPERX_COMPUTE_TYPE: float16
+      # Start conservatively on a 16 GB T4. Increase only after benchmarking.
+      WHISPERX_BATCH_SIZE: ${WHISPERX_GPU_BATCH_SIZE:-4}
+    deploy:
+      resources:
+        limits:
+          memory: 12G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

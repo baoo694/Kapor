@@ -39,7 +39,11 @@ class KoreanTtsPlayer {
   final ValueNotifier<String?> activeText = ValueNotifier<String?>(null);
   final Map<String, File> _files = {};
 
-  Future<void> playOrStop(String rawText) async {
+  Future<void> playOrStop(String rawText) => _playOrStop(rawText, false);
+
+  Future<void> playDialogueOrStop(String rawText) => _playOrStop(rawText, true);
+
+  Future<void> _playOrStop(String rawText, bool dialogue) async {
     final text = rawText.trim();
     if (text.isEmpty) {
       throw const KoreanTtsException('Không có từ tiếng Hàn để phát âm.');
@@ -53,7 +57,7 @@ class KoreanTtsPlayer {
     await _player.stop();
     activeText.value = text;
     try {
-      final audioFile = await _audioFileFor(text);
+      final audioFile = await _audioFileFor(text, dialogue);
       if (activeText.value != text) return;
 
       await _player.setFilePath(audioFile.path);
@@ -75,22 +79,23 @@ class KoreanTtsPlayer {
     await _player.stop();
   }
 
-  Future<File> _audioFileFor(String text) async {
-    final inMemoryFile = _files[text];
+  Future<File> _audioFileFor(String text, bool dialogue) async {
+    final memoryKey = '${dialogue ? 'dialogue' : 'vocabulary'}|$text';
+    final inMemoryFile = _files[memoryKey];
     if (inMemoryFile != null && await inMemoryFile.exists()) {
       return inMemoryFile;
     }
 
     final directory = await getTemporaryDirectory();
-    final file = File('${directory.path}/${_cacheFileName(text)}');
+    final file = File('${directory.path}/${_cacheFileName(text, dialogue)}');
     if (await file.exists() && await file.length() > 44) {
-      _files[text] = file;
+      _files[memoryKey] = file;
       return file;
     }
 
     try {
       final response = await _dio.post<List<int>>(
-        '/tts/korean',
+        dialogue ? '/tts/korean/dialogue' : '/tts/korean',
         data: {'text': text},
         options: Options(
           responseType: ResponseType.bytes,
@@ -104,20 +109,20 @@ class KoreanTtsPlayer {
         throw const KoreanTtsException('Máy chủ không trả về audio phát âm.');
       }
       await file.writeAsBytes(audio, flush: true);
-      _files[text] = file;
+      _files[memoryKey] = file;
       return file;
     } on DioException catch (error) {
       throw KoreanTtsException(_messageFromError(error));
     }
   }
 
-  String _cacheFileName(String text) {
+  String _cacheFileName(String text, bool dialogue) {
     var hash = 0x811c9dc5;
     for (final codeUnit in text.codeUnits) {
       hash ^= codeUnit;
       hash = (hash * 0x01000193) & 0xffffffff;
     }
-    return 'kapor-tts-${hash.toRadixString(16)}-${text.length}.wav';
+    return 'kapor-tts-${dialogue ? 'dialogue' : 'word'}-${hash.toRadixString(16)}-${text.length}.wav';
   }
 
   String _messageFromError(DioException error) {

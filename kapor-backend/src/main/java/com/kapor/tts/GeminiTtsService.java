@@ -60,9 +60,17 @@ public class GeminiTtsService {
     }
 
     public byte[] synthesizeKorean(String userId, String rawText) {
+        return synthesize(userId, rawText, "vocabulary", 180);
+    }
+
+    public byte[] synthesizeKoreanDialogue(String userId, String rawText) {
+        return synthesize(userId, rawText, "dialogue", 800);
+    }
+
+    private byte[] synthesize(String userId, String rawText, String mode, int maxLength) {
         requireConfigured();
-        String text = normalizeKoreanText(rawText);
-        String cacheKey = cacheKey(text);
+        String text = normalizeKoreanText(rawText, maxLength);
+        String cacheKey = cacheKey(mode, text);
 
         Optional<byte[]> cachedAudio = audioCache.get(cacheKey);
         if (cachedAudio.isPresent()) return cachedAudio.get();
@@ -73,7 +81,7 @@ public class GeminiTtsService {
                     "Bạn đã yêu cầu phát âm quá nhiều từ mới. Vui lòng thử lại sau một phút.");
         }
 
-        byte[] audio = requestAudioWithRetry(text);
+        byte[] audio = requestAudioWithRetry(text, mode);
         audioCache.put(cacheKey, audio);
         return audio;
     }
@@ -86,23 +94,25 @@ public class GeminiTtsService {
         }
     }
 
-    private String normalizeKoreanText(String rawText) {
+    private String normalizeKoreanText(String rawText, int maxLength) {
         String text = Normalizer.normalize(rawText == null ? "" : rawText, Normalizer.Form.NFC)
                 .trim()
                 .replaceAll("\\s+", " ");
         if (text.isEmpty()) throw new IllegalArgumentException("Từ tiếng Hàn không được để trống");
-        if (text.length() > 180) throw new IllegalArgumentException("Từ tiếng Hàn không được vượt quá 180 ký tự");
+        if (text.length() > maxLength) {
+            throw new IllegalArgumentException("Nội dung tiếng Hàn không được vượt quá " + maxLength + " ký tự");
+        }
         if (text.chars().noneMatch(codePoint -> Character.UnicodeScript.of(codePoint) == Character.UnicodeScript.HANGUL)) {
             throw new IllegalArgumentException("Chỉ hỗ trợ phát âm từ có ký tự tiếng Hàn");
         }
         return text;
     }
 
-    private byte[] requestAudioWithRetry(String text) {
+    private byte[] requestAudioWithRetry(String text, String mode) {
         IllegalStateException malformedResponse = null;
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
-                return requestAudio(text);
+                return requestAudio(text, mode);
             } catch (IllegalStateException exception) {
                 malformedResponse = exception;
                 log.warn("Gemini TTS returned unusable audio on attempt {}", attempt + 1);
@@ -114,12 +124,12 @@ public class GeminiTtsService {
                 malformedResponse);
     }
 
-    private byte[] requestAudio(String text) {
+    private byte[] requestAudio(String text, String mode) {
         JsonNode response = webClient.post()
                 .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", modelName)
                 .header("x-goog-api-key", apiKey)
                 .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(requestBody(text))
+                .bodyValue(requestBody(text, mode))
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, clientResponse -> clientResponse
                         .bodyToMono(String.class)
@@ -130,13 +140,21 @@ public class GeminiTtsService {
         return parseAudioResponse(response);
     }
 
-    private JsonNode requestBody(String text) {
+    private JsonNode requestBody(String text, String mode) {
         var root = objectMapper.createObjectNode();
         var parts = root.putArray("contents").addObject().putArray("parts");
-        parts.addObject().put("text", """
-                Read the Korean vocabulary item below exactly once. Use a clear, natural Seoul Korean pronunciation at a learner-friendly pace. Do not read instructions, labels, translations, romanization, or punctuation.
-                Vocabulary item: %s
-                """.formatted(text));
+        String instruction = "dialogue".equals(mode)
+                ? """
+                  Read the Korean workplace dialogue below naturally exactly once. Use a professional Seoul Korean
+                  voice, preserve the intended politeness and sentence rhythm, and do not read any labels or instructions.
+                  Dialogue: %s
+                  """.formatted(text)
+                : """
+                  Read the Korean vocabulary item below exactly once. Use a clear, natural Seoul Korean pronunciation
+                  at a learner-friendly pace. Do not read instructions, labels, translations, romanization, or punctuation.
+                  Vocabulary item: %s
+                  """.formatted(text);
+        parts.addObject().put("text", instruction);
 
         var generationConfig = root.putObject("generationConfig");
         generationConfig.putArray("responseModalities").add("AUDIO");
@@ -196,8 +214,8 @@ public class GeminiTtsService {
         return wav;
     }
 
-    private String cacheKey(String text) {
-        String source = String.join("|", promptVersion, modelName, voiceName, text);
+    private String cacheKey(String mode, String text) {
+        String source = String.join("|", promptVersion, modelName, voiceName, mode, text);
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(source.getBytes(StandardCharsets.UTF_8));
             return "tts/korean/" + HexFormat.of().formatHex(digest) + ".wav";

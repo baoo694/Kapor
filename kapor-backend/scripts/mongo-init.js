@@ -47,13 +47,21 @@ db.flashcards.createIndex({ userId: 1, "fsrs.nextReview": 1, "fsrs.state": 1 });
 db.flashcards.createIndex({ "front.korean": 1 });
 db.flashcards.createIndex({ tags: 1 });
 
-// Scenarios
-db.scenarios.createIndex({ domain: 1, difficulty: 1 });
-db.scenarios.createIndex({ isActive: 1, order: 1 });
+// TechTalk Scenarios
+db.techtalk_scenarios.createIndex({ domain: 1, difficulty: 1 });
+db.techtalk_scenarios.createIndex({ active: 1, order: 1 });
+db.techtalk_scenarios.createIndex({ promptTemplateId: 1 });
 
 // Roleplay Sessions
 db.roleplay_sessions.createIndex({ userId: 1, status: 1 });
 db.roleplay_sessions.createIndex({ userId: 1, startedAt: -1 });
+db.roleplay_sessions.createIndex({ status: 1, lastActivityAt: 1 });
+db.roleplay_sessions.createIndex({ testMode: 1, endedAt: 1 });
+db.roleplay_sessions.createIndex({ "messages.clientTurnId": 1 });
+// Metadata must remain until the retention job has removed the corresponding
+// private MinIO object; therefore this is a lookup index, not a Mongo TTL index.
+db.roleplay_audio_assets.createIndex({ expiresAt: 1 });
+db.roleplay_audio_assets.createIndex({ userId: 1, sessionId: 1, _id: 1 });
 
 // Pronunciation
 db.pronunciation_exercises.createIndex({ domain: 1, difficulty: 1 });
@@ -62,5 +70,12 @@ db.pronunciation_attempts.createIndex({ userId: 1, attemptedAt: -1 });
 
 // Admins
 db.admins.createIndex({ email: 1 }, { unique: true });
+
+// Immutable AI prompt versions
+db.admin_prompts.createIndex({ key: 1, promptVersion: -1 }, { unique: true });
+db.admin_prompts.createIndex(
+  { key: 1, status: 1 },
+  { unique: true, partialFilterExpression: { status: "published" } }
+);
 
 print("✅ Kapor MongoDB indexes created successfully");

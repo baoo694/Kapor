@@ -64,6 +64,24 @@ gemini:
     voice-name: ${GEMINI_TTS_VOICE:Kore}
     prompt-version: ${GEMINI_TTS_PROMPT_VERSION:v1}
     max-cache-misses-per-minute: ${GEMINI_TTS_MAX_CACHE_MISSES_PER_MINUTE:12}
+
+# TechTalk AI
+techtalk:
+  seed-default-content: ${TECHTALK_SEED_DEFAULT_CONTENT:true}
+  ai:
+    temperature: ${TECHTALK_AI_TEMPERATURE:0.65}
+    max-output-tokens: ${TECHTALK_AI_MAX_OUTPUT_TOKENS:512}
+  quota:
+    turns-per-minute: ${TECHTALK_TURNS_PER_MINUTE:5}
+    turns-per-day: ${TECHTALK_TURNS_PER_DAY:100}
+    max-turns-per-session: ${TECHTALK_MAX_TURNS_PER_SESSION:30}
+  session:
+    stale-after-hours: ${TECHTALK_SESSION_STALE_HOURS:12}
+    test-retention-hours: ${TECHTALK_TEST_SESSION_RETENTION_HOURS:24}
+    cleanup-cron: ${TECHTALK_SESSION_CLEANUP_CRON:0 15 * * * *}
+  audio:
+    retention-days: ${TECHTALK_AUDIO_RETENTION_DAYS:7}
+    cleanup-cron: ${TECHTALK_AUDIO_CLEANUP_CRON:0 25 3 * * *}
 # MinIO (Object Storage)
 minio:
   endpoint: ${MINIO_ENDPOINT:http://localhost:9000}

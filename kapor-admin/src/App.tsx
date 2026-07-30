@@ -1670,6 +1670,28 @@ const parseSrt = (content: string): ParsedSrtLine[] => {
   });
 };
 
+const emptyScenarioForm = (): AdminScenarioPayload => ({
+  title: "",
+  titleVi: "",
+  domain: "backend",
+  difficulty: "beginner",
+  order: 0,
+  missionVi: "",
+  persona: { name: "", role: "", company: "", avatar: "💬", avatarUrl: "", speechStyle: "", personality: "" },
+  mission: { titleKo: "", titleVi: "", contextPrompt: "", objectives: [], requiredVocabulary: [] },
+  objectives: [],
+  requiredVocabulary: [],
+  evaluationCriteria: {
+    grammarWeight: 0.3,
+    vocabularyWeight: 0.3,
+    politenessWeight: 0.25,
+    taskCompletionWeight: 0.15,
+  },
+  promptTemplateId: "",
+  promptOverride: "",
+  active: true,
+});
+
 function AdminPanel({ lang }: { lang: Lang }) {
   const [section, setSection] = useState<AdminSection>("dashboard");
   const [stats, setStats] = useState<any>(null);
@@ -1798,17 +1820,25 @@ function AdminPanel({ lang }: { lang: Lang }) {
   const [showAddScenario, setShowAddScenario] = useState(false);
   const [showAddDict, setShowAddDict] = useState(false);
   const [showAddPron, setShowAddPron] = useState(false);
-  const [scenarioForm, setScenarioForm] = useState<AdminScenarioPayload>({ title: "", titleVi: "", domain: "backend", difficulty: "beginner", missionVi: "", persona: {}, objectives: [], requiredVocabulary: [], active: true });
+  const [scenarioForm, setScenarioForm] = useState<AdminScenarioPayload>(emptyScenarioForm);
+  const [editingScenarioId, setEditingScenarioId] = useState<string | null>(null);
+  const [scenarioSaving, setScenarioSaving] = useState(false);
+  const [scenarioFormError, setScenarioFormError] = useState("");
   const [dictionaryForm, setDictionaryForm] = useState<AdminDictionaryPayload>({ korean: "", pronunciation: "", vietnamese: "", domain: "backend", hanja: "", frequency: "medium" });
   const [pronunciationForm, setPronunciationForm] = useState<AdminPronunciationPayload>({ title: "", titleVi: "", domain: "backend", difficulty: "beginner", order: 0, sentences: [{ text: "", translationVi: "", audioUrl: "" }] });
   const [videoForm, setVideoForm] = useState<AdminVideoPayload>({ title: "", titleVi: "", youtubeUrl: "", domain: "backend", difficulty: "beginner", durationSeconds: 0, koreanSubtitles: [], vietnameseSubtitles: [], quizMarkers: [] });
   const [videoSaving, setVideoSaving] = useState(false);
   const [videoFormError, setVideoFormError] = useState("");
   const [testScenario, setTestScenario] = useState<(typeof scenarioRows)[number] | null>(null);
+  const [testSessionId, setTestSessionId] = useState<string | null>(null);
+  const [testLoading, setTestLoading] = useState(false);
+  const [testError, setTestError] = useState("");
   const [testMessages, setTestMessages] = useState<{ role: "ai" | "user"; text: string }[]>([]);
   const [testInput, setTestInput] = useState("");
   const [selectedPrompt, setSelectedPrompt] = useState<AdminPromptPayload | null>(null);
   const [promptContent, setPromptContent] = useState("");
+  const [promptSaving, setPromptSaving] = useState(false);
+  const [promptError, setPromptError] = useState("");
   const [dictSearch, setDictSearch] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [userSearch, setUserSearch] = useState("");
@@ -2127,12 +2157,255 @@ function AdminPanel({ lang }: { lang: Lang }) {
     }
   };
 
+  const openNewScenario = () => {
+    setEditingScenarioId(null);
+    setScenarioForm(emptyScenarioForm());
+    setScenarioFormError("");
+    setShowAddScenario(true);
+  };
+
+  const openEditScenario = (scenario: AdminScenarioPayload) => {
+    const defaults = emptyScenarioForm();
+    setEditingScenarioId(scenario.id ?? null);
+    setScenarioForm({
+      ...defaults,
+      ...scenario,
+      persona: { ...defaults.persona, ...(scenario.persona ?? {}) },
+      mission: {
+        ...defaults.mission,
+        ...(scenario.mission ?? {}),
+        objectives: (scenario.mission?.objectives ?? []).map(objective => ({ ...objective })),
+        requiredVocabulary: [...(scenario.mission?.requiredVocabulary ?? scenario.requiredVocabulary ?? [])],
+      },
+      objectives: [...(scenario.objectives ?? [])],
+      requiredVocabulary: [...(scenario.requiredVocabulary ?? [])],
+      evaluationCriteria: { ...defaults.evaluationCriteria, ...(scenario.evaluationCriteria ?? {}) },
+    });
+    setScenarioFormError("");
+    setShowAddScenario(true);
+  };
+
+  const saveScenario = async () => {
+    const weightTotal = Object.values(scenarioForm.evaluationCriteria).reduce((total, weight) => total + Number(weight), 0);
+    if (!scenarioForm.title.trim() || !scenarioForm.titleVi.trim() || !scenarioForm.persona.name?.trim() || !scenarioForm.persona.role?.trim()) {
+      setScenarioFormError("Korean/Vietnamese titles and persona name/role are required.");
+      return;
+    }
+    if (Math.abs(weightTotal - 1) > 0.001) {
+      setScenarioFormError(`Evaluation weights must total 1.00 (current: ${weightTotal.toFixed(2)}).`);
+      return;
+    }
+    const payload = {
+      ...scenarioForm,
+      title: scenarioForm.title.trim(),
+      titleVi: scenarioForm.titleVi.trim(),
+      order: Number(scenarioForm.order),
+      objectives: scenarioForm.mission.objectives.map(objective => objective.vi || objective.ko || objective.en || "").filter(Boolean),
+      missionVi: scenarioForm.mission.titleVi || scenarioForm.missionVi,
+      requiredVocabulary: scenarioForm.mission.requiredVocabulary,
+    };
+    setScenarioSaving(true);
+    setScenarioFormError("");
+    try {
+      const saved = editingScenarioId
+        ? await api.updateScenario(editingScenarioId, payload)
+        : await api.createScenario(payload);
+      setAdminScenariosData(rows => editingScenarioId
+        ? rows.map(row => row.id === saved.id ? saved : row)
+        : [...rows, saved]);
+      setShowAddScenario(false);
+      setEditingScenarioId(null);
+      setScenarioForm(emptyScenarioForm());
+    } catch (error) {
+      setScenarioFormError(error instanceof Error ? error.message : "Unable to save scenario.");
+    } finally {
+      setScenarioSaving(false);
+    }
+  };
+
+  const deleteScenario = async (scenario: AdminScenarioPayload) => {
+    if (!scenario.id || !confirm(`Delete "${scenario.title}"? Scenarios used by sessions will be archived instead.`)) return;
+    try {
+      await api.deleteScenario(scenario.id);
+      setAdminScenariosData(await api.getScenarios());
+      if (editingScenarioId === scenario.id) {
+        setShowAddScenario(false);
+        setEditingScenarioId(null);
+      }
+    } catch (error) {
+      setAdminDataError(error instanceof Error ? error.message : "Unable to delete scenario.");
+    }
+  };
+
+  const openScenarioTest = async (scenario: (typeof scenarioRows)[number]) => {
+    if (!scenario.id) return;
+    setTestScenario(scenario);
+    setTestMessages([]);
+    setTestInput("");
+    setTestError("");
+    setTestLoading(true);
+    try {
+      const session = await api.startRoleplayTest(scenario.id);
+      setTestSessionId(session.id);
+      setTestMessages(session.messages.map(message => ({ role: message.role, text: message.content })));
+    } catch (error) {
+      setTestSessionId(null);
+      setTestError(error instanceof Error ? error.message : "Unable to start test session.");
+    } finally {
+      setTestLoading(false);
+    }
+  };
+
+  const closeScenarioTest = async () => {
+    const sessionId = testSessionId;
+    setTestScenario(null);
+    setTestSessionId(null);
+    setTestMessages([]);
+    setTestError("");
+    if (sessionId) {
+      try { await api.abandonRoleplayTest(sessionId); } catch { /* test cleanup is best-effort */ }
+    }
+  };
+
+  const sendScenarioTest = async () => {
+    const text = testInput.trim();
+    if (!text || !testSessionId || testLoading) return;
+    const streamingIndex = testMessages.length + 1;
+    setTestMessages(messages => [...messages, { role: "user", text }, { role: "ai", text: "" }]);
+    setTestInput("");
+    setTestError("");
+    setTestLoading(true);
+    try {
+      await api.streamRoleplayTurn(
+        testSessionId,
+        { clientTurnId: crypto.randomUUID(), content: text },
+        event => {
+          if (event.type === "token" && event.delta) {
+            setTestMessages(messages => messages.map((message, index) =>
+              index === streamingIndex ? { ...message, text: message.text + event.delta } : message));
+          } else if (event.type === "message.completed" && event.message) {
+            setTestMessages(messages => messages.map((message, index) =>
+              index === streamingIndex ? { role: "ai", text: event.message!.content } : message));
+          } else if (event.type === "error") {
+            setTestError(event.messageText ?? event.code ?? "AI generation failed.");
+          }
+        },
+      );
+    } catch (error) {
+      setTestError(error instanceof Error ? error.message : "AI generation failed.");
+    } finally {
+      setTestLoading(false);
+    }
+  };
+
+  const endScenarioTest = async () => {
+    if (!testSessionId || testLoading) return;
+    setTestLoading(true);
+    try {
+      const session = await api.endRoleplayTest(testSessionId);
+      const score = (session as any).finalEvaluation?.overallScore;
+      setTestError(`Test completed${score == null ? "" : ` · ${score}/100`}. Test-mode data does not affect learner analytics.`);
+      setTestSessionId(null);
+    } catch (error) {
+      setTestError(error instanceof Error ? error.message : "Unable to end test session.");
+    } finally {
+      setTestLoading(false);
+    }
+  };
+
+  const savePrompt = async () => {
+    if (!selectedPrompt?.id || selectedPrompt.status !== "draft") return;
+    setPromptSaving(true);
+    setPromptError("");
+    try {
+      const saved = await api.updatePrompt(selectedPrompt.id, { ...selectedPrompt, content: promptContent });
+      setPromptTemplates(rows => rows.map(row => row.id === saved.id ? saved : row));
+      setSelectedPrompt(saved);
+    } catch (error) {
+      setPromptError(error instanceof Error ? error.message : "Unable to save prompt.");
+    } finally {
+      setPromptSaving(false);
+    }
+  };
+
+  const createPrompt = async () => {
+    setPromptSaving(true);
+    setPromptError("");
+    try {
+      const created = await api.createPrompt({
+        key: "techtalk.roleplay.system",
+        name: "TechTalk roleplay",
+        description: "Runtime system prompt for TechTalk roleplay",
+        content: "You are {{personaName}}, {{personaRole}} at {{company}}. Stay in character and reply in Korean only.\nMission: {{missionTitle}}\nContext: {{contextPrompt}}\nDifficulty: {{difficulty}}\nSpeech style: {{speechStyle}}\nVocabulary: {{requiredVocabulary}}\nObjectives: {{objectives}}",
+        requiredPlaceholders: ["personaName", "personaRole", "missionTitle"],
+      });
+      setPromptTemplates(rows => [...rows, created]);
+      setSelectedPrompt(created);
+      setPromptContent(created.content);
+    } catch (error) {
+      setPromptError(error instanceof Error ? error.message : "Unable to create prompt.");
+    } finally {
+      setPromptSaving(false);
+    }
+  };
+
+  const clonePrompt = async () => {
+    if (!selectedPrompt?.id) return;
+    setPromptSaving(true);
+    setPromptError("");
+    try {
+      const cloned = await api.clonePrompt(selectedPrompt.id);
+      setPromptTemplates(rows => [...rows, cloned]);
+      setSelectedPrompt(cloned);
+      setPromptContent(cloned.content);
+    } catch (error) {
+      setPromptError(error instanceof Error ? error.message : "Unable to clone prompt.");
+    } finally {
+      setPromptSaving(false);
+    }
+  };
+
+  const publishPrompt = async () => {
+    if (!selectedPrompt?.id || selectedPrompt.status !== "draft" || !confirm(`Publish ${selectedPrompt.name} v${selectedPrompt.promptVersion ?? 1}?`)) return;
+    setPromptSaving(true);
+    setPromptError("");
+    try {
+      await api.updatePrompt(selectedPrompt.id, { ...selectedPrompt, content: promptContent });
+      const published = await api.publishPrompt(selectedPrompt.id);
+      setPromptTemplates(await api.getPrompts());
+      setSelectedPrompt(published);
+      setPromptContent(published.content);
+    } catch (error) {
+      setPromptError(error instanceof Error ? error.message : "Unable to publish prompt.");
+    } finally {
+      setPromptSaving(false);
+    }
+  };
+
+  const deletePrompt = async () => {
+    if (!selectedPrompt?.id || selectedPrompt.status !== "draft" || !confirm(`Delete prompt ${selectedPrompt.name} v${selectedPrompt.promptVersion ?? 1}?`)) return;
+    setPromptSaving(true);
+    setPromptError("");
+    try {
+      await api.deletePrompt(selectedPrompt.id);
+      const prompts = await api.getPrompts();
+      setPromptTemplates(prompts);
+      setSelectedPrompt(prompts[0] ?? null);
+      setPromptContent(prompts[0]?.content ?? "");
+    } catch (error) {
+      setPromptError(error instanceof Error ? error.message : "Unable to delete prompt.");
+    } finally {
+      setPromptSaving(false);
+    }
+  };
+
   const navTo = (s: AdminSection) => {
     setSection(s); setShowSubEditor(false); setShowAddVideo(false); setShowAddTopic(false);
     setShowAddLesson(false); setShowAddScenario(false); setShowAddDict(false); setShowAddPron(false);
-    setTestScenario(null); setSelectedUserId(null); setVideoBulkSelected(new Set());
+    if (testSessionId) void api.abandonRoleplayTest(testSessionId).catch(() => undefined);
+    setTestScenario(null); setTestSessionId(null); setSelectedUserId(null); setVideoBulkSelected(new Set());
     setDictImportStep("upload"); setEditingLessonId(null); setLessonEditorTab("vocab");
-    setEditingTopicId(null); setTopicFormError("");
+    setEditingTopicId(null); setEditingScenarioId(null); setScenarioFormError(""); setTopicFormError("");
     if (s === "analytics") setAnalyticsTab("overview");
   };
 
@@ -2759,17 +3032,49 @@ function AdminPanel({ lang }: { lang: Lang }) {
           <div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <h1 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 24, color: "oklch(0.92 0.01 250)", margin: 0 }}>Roleplay Scenarios</h1>
-              <button onClick={() => setShowAddScenario(v => !v)} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+              <button onClick={openNewScenario} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
                 <Plus size={15} /> New Scenario
               </button>
             </div>
             {showAddScenario && (
-              <form onSubmit={async event => { event.preventDefault(); const saved = await api.createScenario(scenarioForm); setAdminScenariosData(rows => [...rows, saved]); setShowAddScenario(false); }} style={{ borderRadius: 14, padding: 20, background: "oklch(0.13 0.025 250)", border: `1px solid ${TEAL}30`, marginBottom: 20 }}>
-                <p style={{ fontSize: 11, color: TEAL, fontFamily: "JetBrains Mono, monospace", letterSpacing: 1, margin: "0 0 14px" }}>NEW SCENARIO</p>
+              <form onSubmit={event => { event.preventDefault(); void saveScenario(); }} style={{ borderRadius: 14, padding: 20, background: "oklch(0.13 0.025 250)", border: `1px solid ${TEAL}30`, marginBottom: 20 }}>
+                <p style={{ fontSize: 11, color: TEAL, fontFamily: "JetBrains Mono, monospace", letterSpacing: 1, margin: "0 0 14px" }}>{editingScenarioId ? "EDIT SCENARIO" : "NEW SCENARIO"}</p>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                  {[["title", "Title (Korean)"], ["titleVi", "Title (Vietnamese)"], ["domain", "Domain"], ["difficulty", "Difficulty"], ["missionVi", "Mission (Vietnamese)"], ["personaName", "Persona name"], ["personaRole", "Persona role"], ["company", "Company"]].map(([field, label]) => <input key={field} required={field === "title"} value={field.startsWith("persona") || field === "company" ? (field === "personaName" ? scenarioForm.persona?.name ?? "" : field === "personaRole" ? scenarioForm.persona?.role ?? "" : scenarioForm.persona?.company ?? "") : (scenarioForm as any)[field] ?? ""} placeholder={label} onChange={event => { const value = event.target.value; if (field === "personaName" || field === "personaRole" || field === "company") setScenarioForm(current => ({ ...current, persona: { ...current.persona, [field === "personaName" ? "name" : field === "personaRole" ? "role" : "company"]: value } })); else setScenarioForm(current => ({ ...current, [field]: value })); }} style={{ padding: "10px", borderRadius: 8, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "white" }} />)}
+                  <input required value={scenarioForm.title} placeholder="Title (Korean)" onChange={event => setScenarioForm(current => ({ ...current, title: event.target.value }))} style={ttStyle} />
+                  <input required value={scenarioForm.titleVi} placeholder="Title (Vietnamese)" onChange={event => setScenarioForm(current => ({ ...current, titleVi: event.target.value }))} style={ttStyle} />
+                  <select value={scenarioForm.domain} onChange={event => setScenarioForm(current => ({ ...current, domain: event.target.value }))} style={ttStyle}>{["frontend", "backend", "devops", "mobile", "data", "agile"].map(value => <option key={value}>{value}</option>)}</select>
+                  <select value={scenarioForm.difficulty} onChange={event => setScenarioForm(current => ({ ...current, difficulty: event.target.value }))} style={ttStyle}>{["beginner", "intermediate", "advanced"].map(value => <option key={value}>{value}</option>)}</select>
+                  <input type="number" min={0} value={scenarioForm.order} placeholder="Display order" onChange={event => setScenarioForm(current => ({ ...current, order: Number(event.target.value) }))} style={ttStyle} />
+                  <label style={{ ...ttStyle, padding: "9px 12px", display: "flex", gap: 8, alignItems: "center" }}><input type="checkbox" checked={scenarioForm.active} onChange={event => setScenarioForm(current => ({ ...current, active: event.target.checked }))} /> Published to learners</label>
                 </div>
-                <div style={{ display: "flex", gap: 10, marginTop: 14 }}><button type="submit" style={{ padding: "9px 20px", border: "none", borderRadius: 9, background: TEAL }}>Save</button><button type="button" onClick={() => setShowAddScenario(false)} style={{ padding: "9px 20px", borderRadius: 9 }}>Cancel</button></div>
+                <p style={{ fontSize: 10, color: TEAL, fontFamily: "JetBrains Mono, monospace", margin: "18px 0 8px" }}>PERSONA</p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                  {([["name", "Persona name"], ["role", "Role"], ["company", "Company"], ["avatar", "Avatar / emoji"], ["speechStyle", "Speech style"], ["personality", "Personality"]] as const).map(([field, label]) => <input key={field} required={field === "name" || field === "role"} value={scenarioForm.persona[field] ?? ""} placeholder={label} onChange={event => setScenarioForm(current => ({ ...current, persona: { ...current.persona, [field]: event.target.value } }))} style={ttStyle} />)}
+                  <input value={scenarioForm.persona.avatarUrl ?? ""} placeholder="Private/public avatar URL" onChange={event => setScenarioForm(current => ({ ...current, persona: { ...current.persona, avatarUrl: event.target.value } }))} style={{ ...ttStyle, gridColumn: "span 3" }} />
+                </div>
+                <p style={{ fontSize: 10, color: TEAL, fontFamily: "JetBrains Mono, monospace", margin: "18px 0 8px" }}>MISSION & OBJECTIVES</p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <input value={scenarioForm.mission.titleKo ?? ""} placeholder="Mission title (Korean)" onChange={event => setScenarioForm(current => ({ ...current, mission: { ...current.mission, titleKo: event.target.value } }))} style={ttStyle} />
+                  <input value={scenarioForm.mission.titleVi ?? ""} placeholder="Mission title (Vietnamese)" onChange={event => setScenarioForm(current => ({ ...current, mission: { ...current.mission, titleVi: event.target.value } }))} style={ttStyle} />
+                  <textarea value={scenarioForm.mission.contextPrompt ?? ""} placeholder="Situation/context injected into the AI prompt" rows={4} onChange={event => setScenarioForm(current => ({ ...current, mission: { ...current.mission, contextPrompt: event.target.value } }))} style={{ ...ttStyle, padding: 10, gridColumn: "span 2", resize: "vertical" }} />
+                  <textarea value={scenarioForm.mission.objectives.map(objective => [objective.ko, objective.vi, objective.en].filter(Boolean).join(" | ")).join("\n")} placeholder={"One objective per line: Korean | Vietnamese | English"} rows={5} onChange={event => setScenarioForm(current => ({ ...current, mission: { ...current.mission, objectives: event.target.value.split("\n").filter(Boolean).map(line => { const [ko, vi, en] = line.split("|").map(value => value.trim()); return { ko, vi, en }; }) } }))} style={{ ...ttStyle, padding: 10, resize: "vertical" }} />
+                  <textarea value={scenarioForm.mission.requiredVocabulary.join("\n")} placeholder="Required vocabulary, one term per line" rows={5} onChange={event => setScenarioForm(current => ({ ...current, mission: { ...current.mission, requiredVocabulary: event.target.value.split(/\n|,/).map(value => value.trim()).filter(Boolean) } }))} style={{ ...ttStyle, padding: 10, resize: "vertical" }} />
+                </div>
+                <p style={{ fontSize: 10, color: TEAL, fontFamily: "JetBrains Mono, monospace", margin: "18px 0 8px" }}>AI PROMPT</p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <select value={scenarioForm.promptTemplateId ?? ""} onChange={event => setScenarioForm(current => ({ ...current, promptTemplateId: event.target.value }))} style={ttStyle}>
+                    <option value="">Published runtime default</option>
+                    {promptTemplates.filter(prompt => prompt.status === "published" || prompt.id === scenarioForm.promptTemplateId).map(prompt => <option key={prompt.id} value={prompt.id}>{prompt.name} · v{prompt.promptVersion ?? 1} · {prompt.status}</option>)}
+                  </select>
+                  <span style={{ ...ttStyle, padding: "9px 12px", color: "oklch(0.5 0.03 250)" }}>Override takes precedence over template</span>
+                  <textarea value={scenarioForm.promptOverride ?? ""} placeholder="Optional scenario-specific system prompt override" rows={5} onChange={event => setScenarioForm(current => ({ ...current, promptOverride: event.target.value }))} style={{ ...ttStyle, padding: 10, gridColumn: "span 2", resize: "vertical" }} />
+                </div>
+                <p style={{ fontSize: 10, color: TEAL, fontFamily: "JetBrains Mono, monospace", margin: "18px 0 8px" }}>EVALUATION WEIGHTS (TOTAL 1.00)</p>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+                  {([["grammarWeight", "Grammar"], ["vocabularyWeight", "Vocabulary"], ["politenessWeight", "Politeness"], ["taskCompletionWeight", "Task completion"]] as const).map(([field, label]) => <label key={field} style={{ fontSize: 10, color: "oklch(0.55 0.03 250)" }}>{label}<input type="number" min={0} max={1} step={0.05} value={scenarioForm.evaluationCriteria[field]} onChange={event => setScenarioForm(current => ({ ...current, evaluationCriteria: { ...current.evaluationCriteria, [field]: Number(event.target.value) } }))} style={{ ...ttStyle, width: "100%", boxSizing: "border-box", marginTop: 4 }} /></label>)}
+                </div>
+                {scenarioFormError && <p role="alert" style={{ color: "#f87171", fontSize: 12 }}>{scenarioFormError}</p>}
+                <div style={{ display: "flex", gap: 10, marginTop: 14 }}><button type="submit" disabled={scenarioSaving} style={{ padding: "9px 20px", border: "none", borderRadius: 9, background: TEAL, cursor: scenarioSaving ? "wait" : "pointer" }}>{scenarioSaving ? "Saving..." : editingScenarioId ? "Save changes" : "Create scenario"}</button><button type="button" disabled={scenarioSaving} onClick={() => { setShowAddScenario(false); setEditingScenarioId(null); setScenarioFormError(""); }} style={{ padding: "9px 20px", borderRadius: 9 }}>Cancel</button></div>
               </form>
             )}
             <AdminTable headers={["Title", "Persona", "Domain", "Difficulty", "Vocab", "Active", ""]}>
@@ -2792,8 +3097,9 @@ function AdminPanel({ lang }: { lang: Lang }) {
                     </span>
                   </td>
                   <td style={{ padding: "12px 16px", display: "flex", gap: 6 }}>
-                    <button onClick={() => { setTestScenario(s); setTestMessages([{ role: "ai", text: `안녕하세요. 저는 ${s.personaName}입니다. 오늘 ${s.title} 연습을 시작할까요?` }]); setTestInput(""); }} style={{ padding: "5px 10px", borderRadius: 7, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Test</button>
-                    <button style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid oklch(0.25 0.03 250)", background: "none", color: "oklch(0.55 0.03 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Edit</button>
+                    <button onClick={() => void openScenarioTest(s)} style={{ padding: "5px 10px", borderRadius: 7, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Test</button>
+                    <button onClick={() => openEditScenario(s)} style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid oklch(0.25 0.03 250)", background: "none", color: "oklch(0.65 0.03 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Edit</button>
+                    <button onClick={() => void deleteScenario(s)} style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid #f8717144", background: "#f8717110", color: "#f87171", fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Delete</button>
                   </td>
                 </TR>
               ))}
@@ -2804,15 +3110,17 @@ function AdminPanel({ lang }: { lang: Lang }) {
         {section === "content-scenarios" && testScenario && (
           <div style={{ maxWidth: 640 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
-              <button onClick={() => setTestScenario(null)} style={{ width: 32, height: 32, borderRadius: 10, background: "oklch(0.16 0.025 250)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <button onClick={() => void closeScenarioTest()} style={{ width: 32, height: 32, borderRadius: 10, background: "oklch(0.16 0.025 250)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 <ChevronLeft size={16} color={TEAL} />
               </button>
               <div>
                 <h1 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 20, color: "oklch(0.92 0.01 250)", margin: 0 }}>Test: {testScenario.title}</h1>
-                <p style={{ fontSize: 11, color: "oklch(0.42 0.03 250)", fontFamily: "JetBrains Mono, monospace", margin: 0 }}>Persona: {testScenario.personaName} ({testScenario.personaRole} @ {testScenario.company})</p>
+                <p style={{ fontSize: 11, color: "oklch(0.42 0.03 250)", fontFamily: "JetBrains Mono, monospace", margin: 0 }}>LIVE GEMINI · test mode · Persona: {testScenario.personaName} ({testScenario.personaRole} @ {testScenario.company})</p>
               </div>
+              <button disabled={!testSessionId || testLoading} onClick={() => void endScenarioTest()} style={{ marginLeft: "auto", padding: "7px 12px", borderRadius: 8, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, cursor: "pointer" }}>End & evaluate</button>
             </div>
             <div style={{ borderRadius: 14, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.20 0.03 250)", padding: 20, minHeight: 340, display: "flex", flexDirection: "column", gap: 12, marginBottom: 12 }}>
+              {testLoading && testMessages.length === 0 && <p style={{ margin: "auto", color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 12 }}>Starting isolated test session…</p>}
               {testMessages.map((msg, i) => (
                 <div key={i} style={{ display: "flex", justifyContent: msg.role === "ai" ? "flex-start" : "flex-end" }}>
                   <div style={{ maxWidth: "72%", borderRadius: 12, padding: "10px 14px", background: msg.role === "ai" ? `${TEAL}15` : "oklch(0.20 0.03 250)", border: `1px solid ${msg.role === "ai" ? `${TEAL}30` : "oklch(0.28 0.03 250)"}` }}>
@@ -2821,16 +3129,12 @@ function AdminPanel({ lang }: { lang: Lang }) {
                   </div>
                 </div>
               ))}
+              {testLoading && testMessages.length > 0 && <span style={{ color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 10 }}>Gemini is streaming…</span>}
             </div>
+            {testError && <p role="status" style={{ color: testError.startsWith("Test completed") ? TEAL : "#f87171", fontSize: 12 }}>{testError}</p>}
             <div style={{ display: "flex", gap: 10 }}>
-              <input value={testInput} onChange={e => setTestInput(e.target.value)} placeholder="Type a message to test the scenario..." onKeyDown={e => {
-                if (e.key === "Enter" && testInput.trim()) {
-                  const userMsg = testInput.trim();
-                  setTestMessages(m => [...m, { role: "user", text: userMsg }, { role: "ai", text: "네, 이해했습니다. 구체적으로 어떤 오류가 발생했나요?" }]);
-                  setTestInput("");
-                }
-              }} style={{ flex: 1, padding: "10px 14px", borderRadius: 10, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.85 0.01 250)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" }} />
-              <button onClick={() => { if (!testInput.trim()) return; const t = testInput.trim(); setTestMessages(m => [...m, { role: "user", text: t }, { role: "ai", text: "네, 이해했습니다. 구체적으로 어떤 오류가 발생했나요?" }]); setTestInput(""); }} style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
+              <input disabled={!testSessionId || testLoading} value={testInput} onChange={e => setTestInput(e.target.value)} placeholder="Type a Korean message to test the scenario..." onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void sendScenarioTest(); } }} style={{ flex: 1, padding: "10px 14px", borderRadius: 10, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.85 0.01 250)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" }} />
+              <button disabled={!testSessionId || testLoading || !testInput.trim()} onClick={() => void sendScenarioTest()} style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, opacity: !testSessionId || testLoading ? .5 : 1 }}>
                 <Send size={14} /> Send
               </button>
             </div>
@@ -3007,12 +3311,16 @@ function AdminPanel({ lang }: { lang: Lang }) {
 
         {section === "settings-prompts" && (
           <div>
-            <h1 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 24, color: "oklch(0.92 0.01 250)", margin: "0 0 24px" }}>AI Prompt Templates</h1>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+              <div><h1 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 24, color: "oklch(0.92 0.01 250)", margin: 0 }}>AI Prompt Templates</h1><p style={{ color: "oklch(0.45 0.03 250)", fontSize: 11, margin: "4px 0 0" }}>Published versions are immutable. Clone to create the next draft.</p></div>
+              <button disabled={promptSaving} onClick={() => void createPrompt()} style={{ padding: "8px 14px", border: "none", borderRadius: 9, background: TEAL, fontWeight: 700, cursor: "pointer" }}><Plus size={14} /> New draft</button>
+            </div>
             <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", gap: 20 }}>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {promptTemplates.map(pt => (
                   <button key={pt.id} onClick={() => { setSelectedPrompt(pt); setPromptContent(pt.content); }} style={{ padding: "12px 14px", borderRadius: 10, border: `1px solid ${selectedPrompt?.id === pt.id ? `${TEAL}50` : "oklch(0.20 0.03 250)"}`, background: selectedPrompt?.id === pt.id ? `${TEAL}10` : "oklch(0.13 0.025 250)", textAlign: "left", cursor: "pointer" }}>
-                    <p style={{ fontSize: 13, fontWeight: 600, color: selectedPrompt?.id === pt.id ? TEAL : "oklch(0.82 0.01 250)", margin: "0 0 3px", fontFamily: "Outfit, sans-serif" }}>{pt.name}</p>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: selectedPrompt?.id === pt.id ? TEAL : "oklch(0.82 0.01 250)", margin: "0 0 3px", fontFamily: "Outfit, sans-serif" }}>{pt.name} · v{pt.promptVersion ?? 1}</p>
+                    <p style={{ fontSize: 10, color: pt.status === "published" ? TEAL : pt.status === "archived" ? "oklch(0.4 0.03 250)" : AMBER, margin: "0 0 3px", fontFamily: "JetBrains Mono, monospace" }}>{pt.status ?? "draft"}</p>
                     <p style={{ fontSize: 10, color: "oklch(0.42 0.03 250)", margin: 0, fontFamily: "JetBrains Mono, monospace" }}>{pt.description}</p>
                   </button>
                 ))}
@@ -3021,14 +3329,23 @@ function AdminPanel({ lang }: { lang: Lang }) {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
                   <div>
                     <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 16, color: "oklch(0.92 0.01 250)", margin: "0 0 2px" }}>{selectedPrompt?.name ?? "No prompt selected"}</p>
-                    <p style={{ fontSize: 10, color: "oklch(0.42 0.03 250)", fontFamily: "JetBrains Mono, monospace", margin: 0 }}>{selectedPrompt?.id ? `${selectedPrompt.id}.txt` : "Create a prompt in the database to edit it."}</p>
+                    <p style={{ fontSize: 10, color: "oklch(0.42 0.03 250)", fontFamily: "JetBrains Mono, monospace", margin: 0 }}>{selectedPrompt?.id ? `${selectedPrompt.key ?? "techtalk.roleplay.system"} · v${selectedPrompt.promptVersion ?? 1} · ${selectedPrompt.status ?? "draft"}` : "Create a prompt in the database to edit it."}</p>
                   </div>
                   <KBadge color={TEAL}>Gemini 2.5 Pro</KBadge>
                 </div>
-                <textarea value={promptContent} onChange={e => setPromptContent(e.target.value)} rows={14} style={{ flex: 1, borderRadius: 10, padding: "12px 14px", background: "oklch(0.09 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.82 0.01 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 12, outline: "none", resize: "vertical", lineHeight: 1.7 }} />
+                {selectedPrompt && <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                  <input disabled={selectedPrompt.status !== "draft"} value={selectedPrompt.name} placeholder="Prompt name" onChange={event => setSelectedPrompt(current => current ? { ...current, name: event.target.value } : current)} style={ttStyle} />
+                  <input disabled={selectedPrompt.status !== "draft"} value={selectedPrompt.description ?? ""} placeholder="Description" onChange={event => setSelectedPrompt(current => current ? { ...current, description: event.target.value } : current)} style={ttStyle} />
+                  <input disabled={selectedPrompt.status !== "draft"} value={(selectedPrompt.requiredPlaceholders ?? []).join(", ")} placeholder="Required placeholders (without braces)" onChange={event => setSelectedPrompt(current => current ? { ...current, requiredPlaceholders: event.target.value.split(",").map(value => value.trim()).filter(Boolean) } : current)} style={{ ...ttStyle, gridColumn: "span 2" }} />
+                </div>}
+                <textarea disabled={!selectedPrompt || selectedPrompt.status !== "draft"} value={promptContent} onChange={e => setPromptContent(e.target.value)} rows={14} style={{ flex: 1, borderRadius: 10, padding: "12px 14px", background: "oklch(0.09 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.82 0.01 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 12, outline: "none", resize: "vertical", lineHeight: 1.7 }} />
+                {promptError && <p role="alert" style={{ color: "#f87171", fontSize: 12 }}>{promptError}</p>}
                 <div style={{ display: "flex", gap: 10, marginTop: 14 }}>
-                  <button disabled={!selectedPrompt?.id} onClick={async () => { if (!selectedPrompt?.id) return; const saved = await api.updatePrompt(selectedPrompt.id, { ...selectedPrompt, content: promptContent }); setPromptTemplates(rows => rows.map(row => row.id === saved.id ? saved : row)); setSelectedPrompt(saved); }} style={{ padding: "9px 20px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Save Changes</button>
+                  <button disabled={!selectedPrompt?.id || selectedPrompt.status !== "draft" || promptSaving} onClick={() => void savePrompt()} style={{ padding: "9px 20px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: selectedPrompt?.status !== "draft" ? .4 : 1 }}>Save Changes</button>
                   <button onClick={() => setPromptContent(selectedPrompt?.content ?? "")} style={{ padding: "9px 16px", borderRadius: 10, border: "1px solid oklch(0.25 0.03 250)", background: "none", color: "oklch(0.55 0.03 250)", fontFamily: "Outfit, sans-serif", fontSize: 13, cursor: "pointer" }}>Reset</button>
+                  <button disabled={!selectedPrompt?.id || promptSaving} onClick={() => void clonePrompt()} style={{ padding: "9px 16px", borderRadius: 10, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, cursor: "pointer" }}>Clone</button>
+                  <button disabled={!selectedPrompt?.id || selectedPrompt.status !== "draft" || promptSaving} onClick={() => void publishPrompt()} style={{ padding: "9px 16px", borderRadius: 10, border: `1px solid ${AMBER}44`, background: `${AMBER}10`, color: AMBER, cursor: "pointer" }}>Publish</button>
+                  <button disabled={!selectedPrompt?.id || selectedPrompt.status !== "draft" || promptSaving} onClick={() => void deletePrompt()} style={{ padding: "9px 16px", borderRadius: 10, border: "1px solid #f8717144", background: "#f8717110", color: "#f87171", cursor: "pointer" }}>Delete</button>
                   <div style={{ marginLeft: "auto", padding: "9px 0" }}>
                     <span style={{ fontSize: 10, color: "oklch(0.38 0.03 250)", fontFamily: "JetBrains Mono, monospace" }}>{promptContent.length} chars · {promptContent.split("\n").length} lines</span>
                   </div>

@@ -1,0 +1,57 @@
+class TechTalkStrings {
+  const TechTalkStrings(this.locale);
+  final String locale;
+  bool get en => locale == 'en';
+
+  String get title => 'TechTalk AI';
+  String get chooseScenario => en ? 'Choose a scenario' : 'Chọn tình huống';
+  String get practiceScenarios =>
+      en ? 'PRACTICE SCENARIOS' : 'CHỌN TÌNH HUỐNG LUYỆN TẬP';
+  String get noScenarios => en
+      ? 'No scenario is available. Add one in the Admin Panel.'
+      : 'Chưa có scenario. Hãy thêm nội dung từ Admin Panel.';
+  String get history => en ? 'History' : 'Lịch sử';
+  String get mission => en ? 'Mission' : 'Nhiệm vụ';
+  String get end => en ? 'End' : 'Kết thúc';
+  String get abandon => en ? 'Abandon' : 'Rời phiên';
+  String get continueSession => en ? 'Continue' : 'Tiếp tục';
+  String get leaveQuestion => en
+      ? 'Leave this roleplay session? You can abandon it or continue practicing.'
+      : 'Rời phiên roleplay? Bạn có thể kết thúc phiên hoặc tiếp tục luyện tập.';
+  String get inputHint =>
+      en ? 'Type a Korean workplace message…' : 'Nhập câu tiếng Hàn…';
+  String get hint => en ? 'Hint' : 'Gợi ý';
+  String get recording =>
+      en ? 'Recording… tap to stop' : 'Đang ghi âm… chạm để dừng';
+  String get transcribing =>
+      en ? 'Transcribing Korean audio…' : 'Đang nhận diện tiếng Hàn…';
+  String get voiceTranscript => en
+      ? 'Voice transcript — editable'
+      : 'Transcript giọng nói — có thể chỉnh sửa';
+  String get retry => en ? 'Retry' : 'Thử lại';
+  String get evaluationUnavailable =>
+      en ? 'Evaluation unavailable' : 'Chưa thể chấm lượt này';
+  String get corrections => en ? 'Corrections' : 'Chỉnh sửa đề xuất';
+  String get result => en ? 'TechTalk Result' : 'Kết quả TechTalk';
+  String get overall => en ? 'OVERALL' : 'ĐIỂM TỔNG';
+  String get grammar => en ? 'Grammar' : 'Ngữ pháp';
+  String get vocabulary => en ? 'Vocabulary' : 'Từ vựng';
+  String get politeness => en ? 'Politeness' : 'Lịch sự';
+  String get task => en ? 'Task' : 'Nhiệm vụ';
+  String get improvements => en ? 'Improvements' : 'Cần cải thiện';
+  String get objectives => en ? 'Objectives' : 'Mục tiêu';
+  String get anotherScenario =>
+      en ? 'Practice another scenario' : 'Luyện tình huống khác';
+  String get noResult => en
+      ? 'No roleplay result is available.'
+      : 'Chưa có kết quả phiên roleplay.';
+  String get completed => en ? 'Completed' : 'Hoàn thành';
+  String get abandoned => en ? 'Abandoned' : 'Đã rời';
+  String get active => en ? 'Active' : 'Đang học';
+  String get resume => en ? 'Resume' : 'Tiếp tục';
+  String get emptyHistory =>
+      en ? 'No TechTalk sessions yet.' : 'Chưa có phiên TechTalk nào.';
+  String get loadMore => en ? 'Load more' : 'Xem thêm';
+  String get autoTts => en ? 'Auto-play AI voice' : 'Tự phát giọng AI';
+  String get language => en ? 'Tiếng Việt' : 'English';
+}

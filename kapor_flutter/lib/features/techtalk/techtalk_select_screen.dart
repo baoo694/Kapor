@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../core/providers/settings_provider.dart';
 import 'data/techtalk_service.dart';
+import 'techtalk_strings.dart';
 
 class TechTalkSelectScreen extends StatefulWidget {
   const TechTalkSelectScreen({super.key});
@@ -24,6 +27,8 @@ class _TechTalkSelectScreenState extends State<TechTalkSelectScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final settings = context.watch<SettingsProvider>();
+    final strings = TechTalkStrings(settings.localeCode);
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
@@ -31,7 +36,19 @@ class _TechTalkSelectScreenState extends State<TechTalkSelectScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: context.pop,
         ),
-        title: const Text('Chọn tình huống'),
+        title: Text(strings.chooseScenario),
+        actions: [
+          IconButton(
+            tooltip: strings.history,
+            onPressed: () => context.push('/techtalk-history'),
+            icon: const Icon(Icons.history),
+          ),
+          TextButton(
+            onPressed: () =>
+                settings.setLocale(settings.localeCode == 'vi' ? 'en' : 'vi'),
+            child: Text(strings.language),
+          ),
+        ],
       ),
       body: FutureBuilder<List<TechTalkScenario>>(
         future: _future,
@@ -53,7 +70,7 @@ class _TechTalkSelectScreenState extends State<TechTalkSelectScreen> {
           if (scenarios.isEmpty) {
             return Center(
               child: Text(
-                'Chưa có scenario. Hãy thêm nội dung từ Admin Panel.',
+                strings.noScenarios,
                 style: GoogleFonts.inter(color: AppTheme.textSecondary),
               ),
             );
@@ -62,7 +79,7 @@ class _TechTalkSelectScreenState extends State<TechTalkSelectScreen> {
             padding: const EdgeInsets.all(16),
             children: [
               Text(
-                'CHỌN TÌNH HUỐNG LUYỆN TẬP',
+                strings.practiceScenarios,
                 style: GoogleFonts.jetBrainsMono(
                   fontSize: 10,
                   color: AppTheme.textSecondary,
@@ -70,7 +87,7 @@ class _TechTalkSelectScreenState extends State<TechTalkSelectScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              ...scenarios.map(_card),
+              ...scenarios.map((scenario) => _card(scenario, strings)),
             ],
           );
         },
@@ -78,7 +95,7 @@ class _TechTalkSelectScreenState extends State<TechTalkSelectScreen> {
     );
   }
 
-  Widget _card(TechTalkScenario scenario) {
+  Widget _card(TechTalkScenario scenario, TechTalkStrings strings) {
     return Card(
       child: InkWell(
         onTap: () => context.push('/techtalk-chat', extra: scenario),
@@ -90,10 +107,7 @@ class _TechTalkSelectScreenState extends State<TechTalkSelectScreen> {
             children: [
               Row(
                 children: [
-                  Text(
-                    scenario.persona.avatar,
-                    style: const TextStyle(fontSize: 26),
-                  ),
+                  _avatar(scenario.persona),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -135,6 +149,16 @@ class _TechTalkSelectScreenState extends State<TechTalkSelectScreen> {
                   color: AppTheme.primary,
                 ),
               ),
+              if (scenario.mission.objectives.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '${scenario.mission.objectives.length} ${strings.objectives.toLowerCase()}',
+                  style: GoogleFonts.inter(
+                    fontSize: 11,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -145,12 +169,29 @@ class _TechTalkSelectScreenState extends State<TechTalkSelectScreen> {
   Widget _badge(String value) => Container(
     padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
     decoration: BoxDecoration(
-      color: AppTheme.secondary.withOpacity(.15),
+      color: AppTheme.secondary.withValues(alpha: .15),
       borderRadius: BorderRadius.circular(6),
     ),
     child: Text(
       value,
       style: GoogleFonts.jetBrainsMono(fontSize: 9, color: AppTheme.secondary),
     ),
+  );
+
+  Widget _avatar(TechTalkPersona persona) => CircleAvatar(
+    radius: 18,
+    backgroundColor: AppTheme.surface,
+    child: persona.avatarUrl.isEmpty
+        ? Text(persona.avatar, style: const TextStyle(fontSize: 23))
+        : ClipOval(
+            child: Image.network(
+              persona.avatarUrl,
+              width: 36,
+              height: 36,
+              fit: BoxFit.cover,
+              errorBuilder: (_, _, _) =>
+                  Text(persona.avatar, style: const TextStyle(fontSize: 23)),
+            ),
+          ),
   );
 }

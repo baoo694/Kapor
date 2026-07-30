@@ -16,6 +16,7 @@ import '../../features/membyte/membyte_review_screen.dart';
 import '../../features/techtalk/techtalk_select_screen.dart';
 import '../../features/techtalk/techtalk_screen.dart';
 import '../../features/techtalk/techtalk_result_screen.dart';
+import '../../features/techtalk/techtalk_history_screen.dart';
 import '../../features/techtalk/data/techtalk_service.dart';
 import '../../features/honorifics/honorifics_screen.dart';
 import '../../features/video/video_screen.dart';
@@ -189,12 +190,27 @@ final GoRouter appRouter = GoRouter(
     GoRoute(
       path: '/techtalk-chat',
       pageBuilder: (context, state) {
-        final scenario = state.extra as TechTalkScenario?;
+        final args = state.extra;
+        final scenario = args is TechTalkChatArgs
+            ? args.scenario
+            : args is TechTalkScenario
+            ? args
+            : null;
         if (scenario == null) {
           return const NoTransitionPage(child: TechTalkSelectScreen());
         }
-        return NoTransitionPage(child: TechTalkScreen(scenario: scenario));
+        return NoTransitionPage(
+          child: TechTalkScreen(
+            scenario: scenario,
+            initialSession: args is TechTalkChatArgs ? args.session : null,
+          ),
+        );
       },
+    ),
+    GoRoute(
+      path: '/techtalk-history',
+      pageBuilder: (context, state) =>
+          const NoTransitionPage(child: TechTalkHistoryScreen()),
     ),
     GoRoute(
       path: '/techtalk-result',

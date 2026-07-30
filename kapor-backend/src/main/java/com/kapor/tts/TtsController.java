@@ -2,6 +2,7 @@ package com.kapor.tts;
 
 import com.kapor.auth.security.CustomUserDetails;
 import com.kapor.tts.dto.KoreanTtsRequest;
+import com.kapor.tts.dto.KoreanDialogueTtsRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.CacheControl;
@@ -31,6 +32,19 @@ public class TtsController {
                 .contentType(MediaType.valueOf("audio/wav"))
                 .contentLength(audio.length)
                 .cacheControl(CacheControl.maxAge(Duration.ofDays(365)).cachePrivate())
+                .body(audio);
+    }
+
+    @PostMapping(value = "/korean/dialogue", consumes = MediaType.APPLICATION_JSON_VALUE, produces = "audio/wav")
+    public ResponseEntity<byte[]> synthesizeKoreanDialogue(
+            @Valid @RequestBody KoreanDialogueTtsRequest request,
+            Authentication authentication) {
+        String userId = ((CustomUserDetails) authentication.getPrincipal()).getUser().getId();
+        byte[] audio = geminiTtsService.synthesizeKoreanDialogue(userId, request.text());
+        return ResponseEntity.ok()
+                .contentType(MediaType.valueOf("audio/wav"))
+                .contentLength(audio.length)
+                .cacheControl(CacheControl.maxAge(Duration.ofDays(30)).cachePrivate())
                 .body(audio);
     }
 }

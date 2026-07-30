@@ -3,6 +3,8 @@ package com.kapor.common.exception;
 import com.kapor.common.dto.ApiResponse;
 import com.kapor.pronunciation.exception.PronunciationAssessmentException;
 import com.kapor.video.exception.GeminiApiException;
+import com.kapor.techtalk.service.RoleplayRateLimitException;
+import com.kapor.techtalk.service.RoleplayAiException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -68,6 +70,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handlePronunciationAssessment(PronunciationAssessmentException ex) {
         return ResponseEntity.status(ex.getStatus())
                 .body(ApiResponse.error("PRONUNCIATION_SERVICE_UNAVAILABLE", ex.getMessage()));
+    }
+
+    @ExceptionHandler(RoleplayRateLimitException.class)
+    public ResponseEntity<ApiResponse<Void>> handleRoleplayRateLimit(RoleplayRateLimitException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(ApiResponse.error("TECHTALK_RATE_LIMITED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(RoleplayAiException.class)
+    public ResponseEntity<ApiResponse<Void>> handleRoleplayAi(RoleplayAiException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_GATEWAY)
+                .body(ApiResponse.error("TECHTALK_AI_UNAVAILABLE", ex.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)

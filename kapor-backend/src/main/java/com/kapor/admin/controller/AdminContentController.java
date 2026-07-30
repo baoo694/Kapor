@@ -6,6 +6,8 @@ import com.kapor.common.dto.ApiResponse;
 import com.kapor.dictionary.model.DictionaryEntry;
 import com.kapor.pronunciation.model.PronunciationExercise;
 import com.kapor.techtalk.model.TechTalkScenario;
+import com.kapor.techtalk.dto.AdminScenarioRequest;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,8 +21,8 @@ public class AdminContentController {
     private final AdminContentService service;
 
     @GetMapping("/scenarios") public ResponseEntity<ApiResponse<List<TechTalkScenario>>> scenarios() { return ResponseEntity.ok(ApiResponse.ok(service.scenarios())); }
-    @PostMapping("/scenarios") public ResponseEntity<ApiResponse<TechTalkScenario>> createScenario(@RequestBody TechTalkScenario value) { return ResponseEntity.ok(ApiResponse.ok(service.createScenario(value))); }
-    @PutMapping("/scenarios/{id}") public ResponseEntity<ApiResponse<TechTalkScenario>> updateScenario(@PathVariable String id, @RequestBody TechTalkScenario value) { return ResponseEntity.ok(ApiResponse.ok(service.updateScenario(id, value))); }
+    @PostMapping("/scenarios") public ResponseEntity<ApiResponse<TechTalkScenario>> createScenario(@Valid @RequestBody AdminScenarioRequest value) { return ResponseEntity.ok(ApiResponse.ok(service.createScenario(value))); }
+    @PutMapping("/scenarios/{id}") public ResponseEntity<ApiResponse<TechTalkScenario>> updateScenario(@PathVariable String id, @Valid @RequestBody AdminScenarioRequest value) { return ResponseEntity.ok(ApiResponse.ok(service.updateScenario(id, value))); }
     @DeleteMapping("/scenarios/{id}") public ResponseEntity<ApiResponse<Void>> deleteScenario(@PathVariable String id) { service.deleteScenario(id); return ResponseEntity.ok(ApiResponse.ok(null)); }
 
     @GetMapping("/pronunciation-exercises") public ResponseEntity<ApiResponse<List<PronunciationExercise>>> pronunciation() { return ResponseEntity.ok(ApiResponse.ok(service.pronunciationExercises())); }
@@ -37,5 +39,7 @@ public class AdminContentController {
     @GetMapping("/prompts") public ResponseEntity<ApiResponse<List<AdminPrompt>>> prompts() { return ResponseEntity.ok(ApiResponse.ok(service.prompts())); }
     @PostMapping("/prompts") public ResponseEntity<ApiResponse<AdminPrompt>> createPrompt(@RequestBody AdminPrompt value) { return ResponseEntity.ok(ApiResponse.ok(service.createPrompt(value))); }
     @PutMapping("/prompts/{id}") public ResponseEntity<ApiResponse<AdminPrompt>> updatePrompt(@PathVariable String id, @RequestBody AdminPrompt value) { return ResponseEntity.ok(ApiResponse.ok(service.updatePrompt(id, value))); }
+    @PostMapping("/prompts/{id}/clone") public ResponseEntity<ApiResponse<AdminPrompt>> clonePrompt(@PathVariable String id) { return ResponseEntity.ok(ApiResponse.ok(service.clonePrompt(id))); }
+    @PostMapping("/prompts/{id}/publish") public ResponseEntity<ApiResponse<AdminPrompt>> publishPrompt(@PathVariable String id) { return ResponseEntity.ok(ApiResponse.ok(service.publishPrompt(id))); }
     @DeleteMapping("/prompts/{id}") public ResponseEntity<ApiResponse<Void>> deletePrompt(@PathVariable String id) { service.deletePrompt(id); return ResponseEntity.ok(ApiResponse.ok(null)); }
 }
