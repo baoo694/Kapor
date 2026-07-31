@@ -29,6 +29,10 @@ import java.util.regex.Pattern;
 @Service
 public class GeminiTtsService {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(25);
+    // Gemini returns the generated PCM as base64 inside a JSON response. The
+    // Spring WebClient default is only 256 KB, which rejects normal dialogue
+    // audio before we can decode it into a WAV file.
+    private static final int MAX_TTS_RESPONSE_BYTES = 16 * 1024 * 1024;
     private static final Pattern SAMPLE_RATE = Pattern.compile("(?:^|;)\\s*rate=(\\d+)", Pattern.CASE_INSENSITIVE);
 
     private final WebClient webClient;
@@ -53,7 +57,9 @@ public class GeminiTtsService {
             ObjectMapper objectMapper,
             TtsAudioCache audioCache,
             TtsRateLimiter rateLimiter) {
-        this.webClient = webClientBuilder.build();
+        this.webClient = webClientBuilder.clone()
+                .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(MAX_TTS_RESPONSE_BYTES))
+                .build();
         this.objectMapper = objectMapper;
         this.audioCache = audioCache;
         this.rateLimiter = rateLimiter;

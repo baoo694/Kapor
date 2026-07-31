@@ -5,6 +5,10 @@ import io.minio.MinioClient;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.web.reactive.function.client.ClientResponse;
+import org.springframework.web.reactive.function.client.ExchangeStrategies;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -15,6 +19,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.net.URI;
+import java.util.Base64;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
@@ -24,23 +29,34 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class GeminiTtsServiceTest {
 
     @Test
-    void convertsUnexpectedGeminiTransportFailureToApiFailure() {
-        TtsAudioCache audioCache = new TtsAudioCache(
-                MinioClient.builder()
-                        .endpoint("http://localhost:9000")
-                        .credentials("minioadmin", "minioadmin")
-                        .build(),
-                "kapor-test") {
-            @Override
-            public Optional<byte[]> get(String objectName) {
-                return Optional.empty();
-            }
+    void acceptsGeminiAudioResponseLargerThanDefaultWebClientBuffer() {
+        byte[] pcm = new byte[300 * 1024];
+        String response = """
+                {"candidates":[{"content":{"parts":[{"inlineData":{"mimeType":"audio/L16;rate=24000","data":"%s"}}]}}]}
+                """.formatted(Base64.getEncoder().encodeToString(pcm));
+        ExchangeStrategies responseStrategies = ExchangeStrategies.builder()
+                .codecs(codecs -> codecs.defaultCodecs().maxInMemorySize(16 * 1024 * 1024))
+                .build();
+        WebClient.Builder client = WebClient.builder().exchangeFunction(request -> Mono.just(
+                ClientResponse.create(HttpStatus.OK, responseStrategies)
+                        .header(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                        .body(response)
+                        .build()));
+        GeminiTtsService service = new GeminiTtsService(
+                client,
+                new com.fasterxml.jackson.databind.ObjectMapper(),
+                emptyCache(),
+                new TtsRateLimiter(12));
+        ReflectionTestUtils.setField(service, "apiKey", "test-key");
 
-            @Override
-            public void put(String objectName, byte[] audio) {
-                // The transport failure happens before a cache write.
-            }
-        };
+        byte[] wav = service.synthesizeKoreanDialogue("learner", "안녕하세요.");
+
+        assertEquals(pcm.length + 44, wav.length);
+    }
+
+    @Test
+    void convertsUnexpectedGeminiTransportFailureToApiFailure() {
+        TtsAudioCache audioCache = emptyCache();
         WebClient.Builder failingClient = WebClient.builder().exchangeFunction(request -> Mono.error(
                 new WebClientRequestException(
                         new IOException("offline"),
@@ -59,6 +75,25 @@ class GeminiTtsServiceTest {
                 () -> service.synthesizeKoreanDialogue("learner", "안녕하세요."));
 
         assertEquals(502, exception.getStatus().value());
+    }
+
+    private TtsAudioCache emptyCache() {
+        return new TtsAudioCache(
+                MinioClient.builder()
+                        .endpoint("http://localhost:9000")
+                        .credentials("minioadmin", "minioadmin")
+                        .build(),
+                "kapor-test") {
+            @Override
+            public Optional<byte[]> get(String objectName) {
+                return Optional.empty();
+            }
+
+            @Override
+            public void put(String objectName, byte[] audio) {
+                // The transport failure happens before a cache write.
+            }
+        };
     }
 
     @Test
