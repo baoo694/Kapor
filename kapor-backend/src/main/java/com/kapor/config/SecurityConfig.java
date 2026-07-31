@@ -3,6 +3,7 @@ package com.kapor.config;
 import com.kapor.auth.security.JwtAuthFilter;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.kapor.common.dto.ApiResponse;
+import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -35,6 +36,11 @@ public class SecurityConfig {
             .cors(org.springframework.security.config.Customizer.withDefaults())
             .csrf(AbstractHttpConfigurer::disable)
             .authorizeHttpRequests(auth -> auth
+                // SSE is served through Servlet async dispatches. The initial
+                // REQUEST has already passed JWT authorization; authorizing
+                // the follow-up ASYNC dispatch again loses that context and
+                // closes a partially-written stream with Access Denied.
+                .dispatcherTypeMatchers(DispatcherType.ASYNC, DispatcherType.ERROR).permitAll()
                 .requestMatchers("/api/auth/**").permitAll()
                 .requestMatchers("/api/admin/**").hasRole("ADMIN")
                 .requestMatchers("/actuator/**").permitAll() // Health checks

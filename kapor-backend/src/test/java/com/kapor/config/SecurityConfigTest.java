@@ -7,14 +7,20 @@ import com.kapor.user.model.User;
 import com.kapor.user.repository.UserRepository;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
+import jakarta.servlet.DispatcherType;
+import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.mock.web.MockHttpServletRequest;
+import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.security.web.FilterChainProxy;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -34,6 +40,9 @@ class SecurityConfigTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private FilterChainProxy springSecurityFilterChain;
 
     @Autowired
     private UserRepository userRepository;
@@ -65,6 +74,20 @@ class SecurityConfigTest {
     @AfterEach
     void cleanUp() {
         userRepository.deleteAll();
+    }
+
+    @Test
+    @DisplayName("should allow the async dispatch of an already-authorized SSE request")
+    void shouldAllowAsyncDispatch() throws Exception {
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/api/roleplay/session/turns/stream");
+        request.setDispatcherType(DispatcherType.ASYNC);
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        springSecurityFilterChain.doFilter(request, response,
+                (servletRequest, servletResponse) ->
+                        ((HttpServletResponse) servletResponse).setStatus(HttpServletResponse.SC_NO_CONTENT));
+
+        assertEquals(HttpServletResponse.SC_NO_CONTENT, response.getStatus());
     }
 
     @Nested
