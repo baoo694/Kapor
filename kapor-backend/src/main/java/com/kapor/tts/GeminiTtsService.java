@@ -81,7 +81,22 @@ public class GeminiTtsService {
                     "Bạn đã yêu cầu phát âm quá nhiều từ mới. Vui lòng thử lại sau một phút.");
         }
 
-        byte[] audio = requestAudioWithRetry(text, mode);
+        byte[] audio;
+        try {
+            audio = requestAudioWithRetry(text, mode);
+        } catch (GeminiApiException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            // WebClient timeouts and malformed provider responses used to
+            // escape to the generic exception handler as HTTP 500. They are
+            // upstream failures, so preserve that distinction for clients.
+            log.warn("Gemini TTS request failed (mode={}, characters={})",
+                    mode, text.length(), exception);
+            throw new GeminiApiException(
+                    HttpStatus.BAD_GATEWAY,
+                    "Không thể kết nối Gemini TTS. Vui lòng thử lại sau.",
+                    exception);
+        }
         audioCache.put(cacheKey, audio);
         return audio;
     }
@@ -174,7 +189,11 @@ public class GeminiTtsService {
             JsonNode inlineData = part.path("inlineData");
             if (!inlineData.path("data").isTextual()) continue;
             String mimeType = inlineData.path("mimeType").asText("");
-            if (!mimeType.toLowerCase(Locale.ROOT).startsWith("audio/l16")) {
+            String normalizedMimeType = mimeType.toLowerCase(Locale.ROOT);
+            // Gemini currently returns audio/L16, but accept audio/pcm too so
+            // a compatible provider MIME variation does not become a 500.
+            if (!normalizedMimeType.startsWith("audio/l16")
+                    && !normalizedMimeType.startsWith("audio/pcm")) {
                 throw new IllegalStateException("Gemini returned an unsupported audio format");
             }
             byte[] pcm = Base64.getDecoder().decode(inlineData.path("data").asText());

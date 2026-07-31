@@ -418,6 +418,7 @@ class _TechTalkScreenState extends State<TechTalkScreen> {
   }
 
   Future<void> _playTts(String text, {bool silent = false}) async {
+    if (!silent && mounted) setState(() => _error = null);
     try {
       await KoreanTtsPlayer.instance.playDialogueOrStop(text);
     } on KoreanTtsException catch (error) {
@@ -623,11 +624,34 @@ class _TechTalkScreenState extends State<TechTalkScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (!user && message.content.isNotEmpty)
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    tooltip: 'TTS',
-                    onPressed: () => _playTts(message.content),
-                    icon: const Icon(Icons.volume_up_outlined, size: 17),
+                  ValueListenableBuilder<KoreanTtsPlaybackState>(
+                    valueListenable: KoreanTtsPlayer.instance.playbackState,
+                    builder: (context, state, child) {
+                      final active = state.matches(
+                        message.content,
+                        dialogue: true,
+                      );
+                      return IconButton(
+                        visualDensity: VisualDensity.compact,
+                        tooltip: active ? 'Dừng phát âm' : 'Phát âm',
+                        onPressed: () => _playTts(message.content),
+                        icon:
+                            state.status == KoreanTtsPlaybackStatus.loading &&
+                                active
+                            ? const SizedBox.square(
+                                dimension: 17,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Icon(
+                                active
+                                    ? Icons.stop_circle_outlined
+                                    : Icons.volume_up_outlined,
+                                size: 17,
+                              ),
+                      );
+                    },
                   ),
                 Flexible(
                   child: Container(

@@ -80,6 +80,8 @@ class ApiClient {
     dio.interceptors.add(
       LogInterceptor(
         request: true,
+        // Never print bearer tokens or other request headers to logcat.
+        requestHeader: false,
         // Authentication payloads, learner transcripts, and AI feedback can
         // contain sensitive data. Keep diagnostics at metadata level only.
         requestBody: false,
