@@ -26,6 +26,7 @@ public class PronunciationService {
     private final PronunciationAttemptRepository attemptRepository;
     private final PronunciationAudioStorage audioStorage;
     private final PronunciationAssessmentProvider assessmentProvider;
+    private final KoreanReadingMatchScorer readingMatchScorer;
 
     public List<PronunciationExercise> exercises() {
         List<PronunciationExercise> exercises = exerciseRepository.findAllByOrderByOrderAsc();
@@ -57,23 +58,31 @@ public class PronunciationService {
         String audioObjectKey = audioStorage.storeAttempt(userId, wav);
         PronunciationAttempt attempt = attemptRepository.save(PronunciationAttempt.builder()
                 .userId(userId).exerciseId(exerciseId).sentenceIndex(sentenceIndex).status("processing")
-                .provider(assessmentProvider.name()).assessmentVersion("azure-pa-whisperx-v1")
+                .provider(assessmentProvider.name()).assessmentVersion("azure-pa-whisperx-v2")
                 .audioObjectKey(audioObjectKey).audioContentType("audio/wav")
                 .audioDurationMs(durationMs).userWaveform(waveform(pcm)).attemptedAt(now)
                 .expiresAt(now.plus(AUDIO_RETENTION)).build());
         try {
+            String referenceText = exercise.getSentences().get(sentenceIndex).getText();
             PronunciationAssessmentProvider.Assessment assessment = assessmentProvider.assess(
-                    userId, exercise.getSentences().get(sentenceIndex).getText(), wav);
-            attempt.setStatus("completed");
+                    userId, referenceText, wav);
+            String transcriptionText = transcriptionText(assessment);
+            Integer completeness = assessment.scores() == null ? null : assessment.scores().getCompleteness();
+            boolean differentSentence = readingMatchScorer.isDifferentSentence(
+                    referenceText, transcriptionText, completeness);
+            attempt.setStatus(differentSentence ? "wrong_sentence" : "completed");
             attempt.setScores(assessment.scores());
-            attempt.setTranscriptionText(assessment.transcription());
+            attempt.setTranscriptionText(transcriptionText);
             attempt.setTranscript(assessment.transcript());
             attempt.setAssessmentWords(assessment.wordFeedback());
             // Compatibility for clients released before the evidence split.
             attempt.setTranscription(assessment.wordFeedback());
             attempt.setAnalysis(assessment.analysis());
             attempt = attemptRepository.save(attempt);
-            return evaluation(attempt, exercise, "Azure đã đánh giá phát âm; WhisperX đã tạo transcript và timeline.");
+            String message = differentSentence
+                    ? wrongSentenceMessage(transcriptionText)
+                    : "Azure đã đánh giá phát âm; WhisperX đã tạo transcript và timeline.";
+            return evaluation(attempt, exercise, message);
         } catch (RuntimeException exception) {
             attempt.setStatus("provider_error");
             attemptRepository.save(attempt);
@@ -140,6 +149,22 @@ public class PronunciationService {
             return attempt.getTranscript().getProvider();
         }
         return attempt.getProvider() != null && attempt.getProvider().contains("whisper") ? "whisperx" : "legacy";
+    }
+
+    private String transcriptionText(PronunciationAssessmentProvider.Assessment assessment) {
+        if (assessment.transcription() != null && !assessment.transcription().isBlank()) {
+            return assessment.transcription().trim();
+        }
+        if (assessment.transcript() != null && assessment.transcript().getText() != null) {
+            return assessment.transcript().getText().trim();
+        }
+        return "";
+    }
+
+    private String wrongSentenceMessage(String transcriptionText) {
+        return transcriptionText == null || transcriptionText.isBlank()
+                ? "WhisperX chưa nhận dạng được câu mẫu trong bản ghi. Hãy nghe lại câu mẫu và đọc lại từ đầu."
+                : "WhisperX nhận được nội dung khác câu mẫu. Hãy nghe lại câu mẫu và đọc lại từ đầu.";
     }
 
     private List<Double> waveform(byte[] pcm) {

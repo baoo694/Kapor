@@ -29,4 +29,27 @@ class KoreanReadingMatchScorerTest {
             assertThat(feedback.getPhonemeDetail()).contains("Không nhận dạng");
         });
     }
+
+    @Test
+    void rejectsACompletelyDifferentSentence() {
+        assertThat(scorer.isDifferentSentence(
+                "비동기 처리를 구현했습니다", "네 안녕하세요 저는 파로고입니다", 0)).isTrue();
+    }
+
+    @Test
+    void trustsAnIdenticalTranscriptEvenWhenAzureCompletenessIsLow() {
+        assertThat(scorer.isDifferentSentence(
+                "비동기 처리를 구현했습니다", "비동기 처리를 구현했습니다", 33)).isFalse();
+    }
+
+    @Test
+    void keepsACloselyRelatedReadingForPronunciationFeedback() {
+        assertThat(scorer.isDifferentSentence(
+                "서버 배포가 완료되었습니다", "서버 완료되었습니다", 33)).isFalse();
+    }
+
+    @Test
+    void asksForAnotherRecordingWhenWhisperXHeardNoWords() {
+        assertThat(scorer.isDifferentSentence("비동기 처리를 구현했습니다", "", 0)).isTrue();
+    }
 }

@@ -1,6 +1,7 @@
 package com.kapor.pronunciation.service;
 
 import com.kapor.pronunciation.model.PronunciationAttempt;
+import org.springframework.stereotype.Component;
 
 import java.text.Normalizer;
 import java.util.ArrayList;
@@ -12,8 +13,12 @@ import java.util.List;
  * reading prompt. This is deliberately a reading-match score, not a phoneme
  * pronunciation assessment.
  */
+@Component
 final class KoreanReadingMatchScorer {
     private static final double INSERTION_COST = .75d;
+    private static final int CLEAR_MISMATCH_SIMILARITY = 35;
+    private static final int PROBABLE_MISMATCH_SIMILARITY = 55;
+    private static final int LOW_AZURE_COMPLETENESS = 50;
 
     PronunciationAssessmentProvider.Assessment score(String expectedText, String transcription, double durationSeconds) {
         List<String> expectedWords = words(expectedText);
@@ -31,6 +36,31 @@ final class KoreanReadingMatchScorer {
                 PronunciationAttempt.Scores.builder()
                         .overall(accuracy).accuracy(accuracy).completeness(completeness).fluency(pace).build(),
                 transcription == null ? "" : transcription.trim(), feedback, null);
+    }
+
+    /**
+     * Rejects audio that clearly contains another sentence instead of turning
+     * Azure's forced reference alignment into learner-facing pronunciation
+     * feedback. WhisperX is the textual evidence; Azure completeness is only
+     * used to confirm borderline transcript mismatches.
+     */
+    boolean isDifferentSentence(String expectedText, String transcription, Integer azureCompleteness) {
+        String expected = normalize(expectedText);
+        String actual = normalize(transcription);
+        if (expected.isBlank()) return false;
+        if (actual.isBlank()) return true;
+
+        int similarity = readingSimilarity(expected, actual);
+        if (similarity < CLEAR_MISMATCH_SIMILARITY) return true;
+        return similarity < PROBABLE_MISMATCH_SIMILARITY
+                && azureCompleteness != null
+                && azureCompleteness < LOW_AZURE_COMPLETENESS;
+    }
+
+    int readingSimilarity(String expectedText, String transcription) {
+        String expectedCompact = jamo(normalize(expectedText).replace(" ", ""));
+        String actualCompact = jamo(normalize(transcription).replace(" ", ""));
+        return percent(similarity(expectedCompact, actualCompact));
     }
 
     private List<WordMatch> align(List<String> expected, List<String> actual) {

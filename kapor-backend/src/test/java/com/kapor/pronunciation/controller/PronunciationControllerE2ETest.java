@@ -26,6 +26,7 @@ import org.springframework.mock.web.MockMultipartFile;
 import java.time.Instant;
 import java.util.List;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -101,7 +102,7 @@ class PronunciationControllerE2ETest {
                 .andExpect(jsonPath("$.success").value(true))
                 .andExpect(jsonPath("$.data.status").value("completed"))
                 .andExpect(jsonPath("$.data.scores.overall").value(91))
-                .andExpect(jsonPath("$.data.assessmentVersion").value("azure-pa-whisperx-v1"))
+                .andExpect(jsonPath("$.data.assessmentVersion").value("azure-pa-whisperx-v2"))
                 .andExpect(jsonPath("$.data.assessmentWords[0].text").value("배포가"))
                 .andExpect(jsonPath("$.data.analysis.summaryVi").value("Cần đọc rõ hơn cụm 배포가."))
                 .andExpect(jsonPath("$.data.transcription[0].text").value("배포가"))
@@ -125,5 +126,43 @@ class PronunciationControllerE2ETest {
         mockMvc.perform(get("/api/pronunciation/attempts/{id}/audio", attempt.getId())
                         .header("Authorization", "Bearer " + otherUserToken))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void reportsAWrongSentenceAndReturnsTheWhisperXTranscriptAsEvidence() throws Exception {
+        when(assessmentProvider.assess(anyString(), anyString(), any())).thenReturn(
+                new PronunciationAssessmentProvider.Assessment(
+                        PronunciationAttempt.Scores.builder()
+                                .overall(24).accuracy(25).fluency(97).completeness(0).build(),
+                        "네 안녕하세요 저는 파로고입니다",
+                        List.of(PronunciationAttempt.WordFeedback.builder()
+                                .text("비동기").score(0).errorType("Omission").build()),
+                        null,
+                        PronunciationAttempt.Transcript.builder()
+                                .provider("whisperx")
+                                .text("네 안녕하세요 저는 파로고입니다")
+                                .durationSeconds(2.4)
+                                .build(),
+                        "azure-pa",
+                        "whisperx"));
+        MockMultipartFile audio = new MockMultipartFile(
+                "audioFile", "attempt.pcm", "audio/pcm", new byte[32_000]);
+
+        mockMvc.perform(multipart("/api/pronunciation/evaluate")
+                        .file(audio).param("exerciseId", exercise.getId()).param("sentenceIndex", "0")
+                        .header("Authorization", "Bearer " + token))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.status").value("wrong_sentence"))
+                .andExpect(jsonPath("$.data.message").value(org.hamcrest.Matchers.containsString("đọc lại")))
+                .andExpect(jsonPath("$.data.transcriptionText").value("네 안녕하세요 저는 파로고입니다"))
+                .andExpect(jsonPath("$.data.transcriptProvider").value("whisperx"))
+                .andExpect(jsonPath("$.data.transcript.provider").value("whisperx"))
+                .andExpect(jsonPath("$.data.transcript.text").value("네 안녕하세요 저는 파로고입니다"))
+                .andExpect(jsonPath("$.data.scores.completeness").value(0));
+
+        PronunciationAttempt attempt = attemptRepository.findAll().get(0);
+        assertThat(attempt.getStatus()).isEqualTo("wrong_sentence");
+        assertThat(attempt.getTranscriptionText()).isEqualTo("네 안녕하세요 저는 파로고입니다");
+        assertThat(attempt.getTranscript().getProvider()).isEqualTo("whisperx");
     }
 }

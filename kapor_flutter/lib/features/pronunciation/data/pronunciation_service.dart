@@ -85,6 +85,8 @@ class PronunciationResult {
   final PronunciationAnalysis? analysis;
   final List<PronunciationWordFeedback> feedback;
   final List<double> userWaveform;
+  bool get isWrongSentence => status == 'wrong_sentence';
+
   factory PronunciationResult.fromJson(Map<String, dynamic> json) =>
       PronunciationResult(
         attemptId: json['attemptId']?.toString() ?? '',
@@ -315,6 +317,8 @@ class PronunciationAttemptSummary {
   final List<PronunciationWordFeedback> feedback;
   final List<double> userWaveform;
   final DateTime? attemptedAt;
+  bool get isWrongSentence => status == 'wrong_sentence';
+
   factory PronunciationAttemptSummary.fromJson(Map<String, dynamic> json) =>
       PronunciationAttemptSummary(
         id: json['id']?.toString() ?? '',

@@ -13,6 +13,7 @@ import '../../core/audio/korean_tts_player.dart';
 import '../../core/network/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import 'data/pronunciation_service.dart';
+import 'widgets/wrong_sentence_alert.dart';
 
 class PronunciationScreen extends StatefulWidget {
   const PronunciationScreen({super.key, required this.exercise});
@@ -276,7 +277,7 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
             const SizedBox(height: 12),
             _recordingCard(),
             if (_error != null) _errorMessage(),
-            if (_result != null) _resultCard(_result!),
+            if (_result != null) _resultCard(_result!, sentence),
             if (_history.isNotEmpty) _historySection(),
           ],
         ),
@@ -386,7 +387,21 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
     child: Text(_error!, style: const TextStyle(color: Colors.redAccent)),
   );
 
-  Widget _resultCard(PronunciationResult result) {
+  Widget _resultCard(
+    PronunciationResult result,
+    PronunciationSentence sentence,
+  ) {
+    if (result.isWrongSentence) {
+      final transcript = result.transcriptionText.trim().isNotEmpty
+          ? result.transcriptionText
+          : result.transcript?.text ?? '';
+      return WrongSentenceAlert(
+        expectedText: sentence.text,
+        transcriptText: transcript,
+        message: result.message,
+        onRetry: _evaluating ? null : () => unawaited(_record()),
+      );
+    }
     final focusWords = _focusWords(result.feedback);
     final isComplete = result.status == 'completed';
     return Card(
@@ -399,7 +414,9 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
             _label(isComplete ? 'KẾT QUẢ CỦA BẠN' : 'TRẠNG THÁI'),
             const SizedBox(height: 8),
             Text(
-              isComplete ? _scoreSummary(result.scores?.overall) : result.message,
+              isComplete
+                  ? _scoreSummary(result.scores?.overall)
+                  : result.message,
               style: GoogleFonts.inter(
                 color: AppTheme.textPrimary,
                 fontSize: isComplete ? 16 : 14,
@@ -513,9 +530,9 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
               label: '${word.text}, ${word.score} trên 100',
               child: Chip(
                 label: Text('${word.text} · ${word.score}'),
-                backgroundColor: _feedbackColor(word.score).withValues(
-                  alpha: .18,
-                ),
+                backgroundColor: _feedbackColor(
+                  word.score,
+                ).withValues(alpha: .18),
                 side: BorderSide(
                   color: _feedbackColor(word.score).withValues(alpha: .65),
                 ),
@@ -545,10 +562,7 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
           alignment: Alignment.centerLeft,
           child: Text(
             'Bạn đã đọc: ${result.transcriptionText}',
-            style: GoogleFonts.inter(
-              fontSize: 13,
-              color: AppTheme.textPrimary,
-            ),
+            style: GoogleFonts.inter(fontSize: 13, color: AppTheme.textPrimary),
           ),
         ),
         const SizedBox(height: 12),
@@ -574,26 +588,47 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
       children: [
         _label('LỊCH SỬ GẦN ĐÂY'),
         const SizedBox(height: 8),
-        ..._history
-            .take(5)
-            .map(
-              (attempt) => Card(
-                child: ListTile(
-                  leading: Icon(
-                    attempt.status == 'completed'
-                        ? Icons.check_circle_outline
-                        : Icons.error_outline,
-                    color: attempt.status == 'completed'
-                        ? AppTheme.secondary
-                        : AppTheme.textSecondary,
-                  ),
-                  title: Text(
-                    attempt.scores == null
-                        ? 'Đang chờ kết quả'
-                        : 'Tổng điểm ${attempt.scores!.overall}/100',
-                    style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
-                  ),
-                  subtitle: Text(
+        ..._history.take(5).map((attempt) {
+          final wrongSentence = attempt.isWrongSentence;
+          return Card(
+            child: ListTile(
+              leading: Icon(
+                wrongSentence
+                    ? Icons.report_gmailerrorred_outlined
+                    : attempt.status == 'completed'
+                    ? Icons.check_circle_outline
+                    : Icons.error_outline,
+                color: wrongSentence
+                    ? Colors.redAccent
+                    : attempt.status == 'completed'
+                    ? AppTheme.secondary
+                    : AppTheme.textSecondary,
+              ),
+              title: Text(
+                wrongSentence
+                    ? 'Đọc khác câu mẫu'
+                    : attempt.scores == null
+                    ? 'Đang chờ kết quả'
+                    : 'Tổng điểm ${attempt.scores!.overall}/100',
+                style: GoogleFonts.outfit(fontWeight: FontWeight.w600),
+              ),
+              isThreeLine:
+                  wrongSentence && attempt.transcriptionText.isNotEmpty,
+              subtitle: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (wrongSentence && attempt.transcriptionText.isNotEmpty)
+                    Text(
+                      'WhisperX: ${attempt.transcriptionText}',
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                  Text(
                     attempt.attemptedAt == null
                         ? ''
                         : _timeLabel(attempt.attemptedAt!),
@@ -602,22 +637,24 @@ class _PronunciationScreenState extends State<PronunciationScreen> {
                       color: AppTheme.textSecondary,
                     ),
                   ),
-                  trailing: IconButton(
-                    tooltip: attempt.attemptAudioUrl.isEmpty
-                        ? 'Audio đã hết hạn'
-                        : 'Nghe lại bản ghi',
-                    onPressed: attempt.attemptAudioUrl.isEmpty
-                        ? null
-                        : () => _playAttempt(attempt),
-                    icon: Icon(
-                      _playingKey == 'attempt-${attempt.id}'
-                          ? Icons.stop
-                          : Icons.play_arrow,
-                    ),
-                  ),
+                ],
+              ),
+              trailing: IconButton(
+                tooltip: attempt.attemptAudioUrl.isEmpty
+                    ? 'Audio đã hết hạn'
+                    : 'Nghe lại bản ghi',
+                onPressed: attempt.attemptAudioUrl.isEmpty
+                    ? null
+                    : () => _playAttempt(attempt),
+                icon: Icon(
+                  _playingKey == 'attempt-${attempt.id}'
+                      ? Icons.stop
+                      : Icons.play_arrow,
                 ),
               ),
             ),
+          );
+        }),
       ],
     ),
   );
