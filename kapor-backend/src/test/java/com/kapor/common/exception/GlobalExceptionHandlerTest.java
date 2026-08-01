@@ -1,5 +1,7 @@
 package com.kapor.common.exception;
 
+import com.kapor.auth.service.InvalidPasswordResetOtpException;
+import com.kapor.auth.service.PasswordResetRateLimitException;
 import com.kapor.common.dto.ApiResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -71,6 +73,31 @@ class GlobalExceptionHandlerTest {
         assertThat(response.getBody().isSuccess()).isFalse();
         assertThat(response.getBody().getError()).isEqualTo("BAD_REQUEST");
         assertThat(response.getBody().getMessage()).isEqualTo("Invalid input");
+    }
+
+    @Test
+    @DisplayName("should handle an invalid password reset OTP with 400")
+    void shouldHandleInvalidPasswordResetOtp() {
+        InvalidPasswordResetOtpException ex = new InvalidPasswordResetOtpException("Invalid OTP");
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handleInvalidPasswordResetOtp(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getError()).isEqualTo("INVALID_PASSWORD_RESET_OTP");
+    }
+
+    @Test
+    @DisplayName("should handle password reset rate limits with 429 and Retry-After")
+    void shouldHandlePasswordResetRateLimit() {
+        PasswordResetRateLimitException ex = new PasswordResetRateLimitException("Try later", 60);
+
+        ResponseEntity<ApiResponse<Void>> response = handler.handlePasswordResetRateLimit(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.TOO_MANY_REQUESTS);
+        assertThat(response.getHeaders().getFirst("Retry-After")).isEqualTo("60");
+        assertThat(response.getBody()).isNotNull();
+        assertThat(response.getBody().getError()).isEqualTo("PASSWORD_RESET_RATE_LIMITED");
     }
 
     @Test

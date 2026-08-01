@@ -1,5 +1,7 @@
 package com.kapor.common.exception;
 
+import com.kapor.auth.service.InvalidPasswordResetOtpException;
+import com.kapor.auth.service.PasswordResetRateLimitException;
 import com.kapor.common.dto.ApiResponse;
 import com.kapor.pronunciation.exception.PronunciationAssessmentException;
 import com.kapor.video.exception.GeminiApiException;
@@ -52,6 +54,19 @@ public class GlobalExceptionHandler {
                 .collect(Collectors.joining(", "));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ApiResponse.error("VALIDATION_ERROR", errors));
+    }
+
+    @ExceptionHandler(InvalidPasswordResetOtpException.class)
+    public ResponseEntity<ApiResponse<Void>> handleInvalidPasswordResetOtp(InvalidPasswordResetOtpException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error("INVALID_PASSWORD_RESET_OTP", ex.getMessage()));
+    }
+
+    @ExceptionHandler(PasswordResetRateLimitException.class)
+    public ResponseEntity<ApiResponse<Void>> handlePasswordResetRateLimit(PasswordResetRateLimitException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+                .body(ApiResponse.error("PASSWORD_RESET_RATE_LIMITED", ex.getMessage()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

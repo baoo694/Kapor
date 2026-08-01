@@ -50,6 +50,16 @@ jwt:
   access-token-expiration-ms: 900000 # 15 minutes
   refresh-token-expiration-ms: 2592000000 # 30 days
 
+# Password reset OTP security controls
+password-reset:
+  otp:
+    ttl-minutes: ${PASSWORD_RESET_OTP_TTL_MINUTES:15}
+    resend-cooldown-seconds: ${PASSWORD_RESET_OTP_RESEND_COOLDOWN_SECONDS:60}
+    max-sends-per-window: ${PASSWORD_RESET_OTP_MAX_SENDS_PER_WINDOW:5}
+    send-window-minutes: ${PASSWORD_RESET_OTP_SEND_WINDOW_MINUTES:60}
+    max-verification-attempts: ${PASSWORD_RESET_OTP_MAX_VERIFICATION_ATTEMPTS:5}
+    lockout-minutes: ${PASSWORD_RESET_OTP_LOCKOUT_MINUTES:15}
+
 # Google OAuth2
 google:
   client-id: ${GOOGLE_CLIENT_ID:your-google-client-id}

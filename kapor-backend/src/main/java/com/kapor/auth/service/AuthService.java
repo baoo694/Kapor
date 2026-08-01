@@ -11,7 +11,6 @@ import io.jsonwebtoken.JwtException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -25,8 +24,6 @@ import java.time.Instant;
 import java.util.Collections;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.Random;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Service
@@ -38,7 +35,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
-    private final StringRedisTemplate redisTemplate;
+    private final PasswordResetOtpService passwordResetOtpService;
     private final JavaMailSender mailSender;
 
     @Value("${jwt.refresh-token-expiration-ms}")
@@ -202,38 +199,36 @@ public class AuthService {
             throw new RuntimeException("This email is registered with a different provider");
         }
 
-        String otp = String.format("%06d", new Random().nextInt(999999));
-        
-        // Save OTP to Redis for 15 minutes
-        redisTemplate.opsForValue().set("OTP:" + request.getEmail(), otp, 15, TimeUnit.MINUTES);
+        String otp = passwordResetOtpService.issueOtp(request.getEmail());
 
         // Send actual email
         SimpleMailMessage message = new SimpleMailMessage();
         message.setFrom("Kapor Support <noreply@kapor.com>");
         message.setTo(request.getEmail());
         message.setSubject("Kapor - Password Reset OTP");
-        message.setText("Hello,\n\nYour password reset OTP is: " + otp + "\n\nThis OTP will expire in 15 minutes.\n\nIf you didn't request a password reset, please ignore this email.");
-        mailSender.send(message);
+        message.setText("Hello,\n\nYour password reset OTP is: " + otp
+                + "\n\nThis OTP will expire in " + passwordResetOtpService.getOtpTtlMinutes()
+                + " minutes.\n\nIf you didn't request a password reset, please ignore this email.");
+        try {
+            mailSender.send(message);
+        } catch (RuntimeException exception) {
+            // Do not leave a usable code in Redis when delivery failed. Send
+            // counters remain active so a broken SMTP service cannot be abused.
+            passwordResetOtpService.invalidateOtp(request.getEmail());
+            throw exception;
+        }
 
         log.info("Email sent to: {}", request.getEmail());
     }
 
     public void resetPassword(ResetPasswordRequest request) {
-        String cacheKey = "OTP:" + request.getEmail();
-        String savedOtp = redisTemplate.opsForValue().get(cacheKey);
-
-        if (savedOtp == null || !savedOtp.equals(request.getOtp())) {
-            throw new RuntimeException("Invalid or expired OTP");
-        }
-
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
+        passwordResetOtpService.verifyAndConsume(request.getEmail(), request.getOtp());
+
         user.setPasswordHash(passwordEncoder.encode(request.getNewPassword()));
         userRepository.save(user);
-
-        // Delete OTP
-        redisTemplate.delete(cacheKey);
     }
 
     public void makeAdmin(String email) {

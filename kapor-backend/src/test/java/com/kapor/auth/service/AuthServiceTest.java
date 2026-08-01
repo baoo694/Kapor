@@ -2,7 +2,9 @@ package com.kapor.auth.service;
 
 import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
 import com.kapor.auth.dto.AuthResponse;
+import com.kapor.auth.dto.ForgotPasswordRequest;
 import com.kapor.auth.dto.GoogleLoginRequest;
+import com.kapor.auth.dto.ResetPasswordRequest;
 import com.kapor.auth.security.JwtService;
 import com.kapor.user.model.User;
 import com.kapor.user.repository.UserRepository;
@@ -10,11 +12,17 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.mockito.junit.jupiter.MockitoSettings;
 import org.mockito.quality.Strictness;
+import org.springframework.mail.MailSendException;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
 
@@ -41,6 +49,18 @@ class AuthServiceTest {
 
     @Mock
     private JwtService jwtService;
+
+    @Mock
+    private PasswordEncoder passwordEncoder;
+
+    @Mock
+    private AuthenticationManager authenticationManager;
+
+    @Mock
+    private PasswordResetOtpService passwordResetOtpService;
+
+    @Mock
+    private JavaMailSender mailSender;
 
     @InjectMocks
     private AuthService authService;
@@ -186,6 +206,65 @@ class AuthServiceTest {
             assertThatThrownBy(() -> authService.loginWithGoogle(request))
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("Invalid token");
+        }
+    }
+
+    @Nested
+    @DisplayName("Password reset")
+    class PasswordReset {
+
+        @Test
+        @DisplayName("should issue and email an OTP")
+        void shouldIssueAndEmailOtp() {
+            User user = User.builder().email("user@example.com").provider("email").build();
+            ForgotPasswordRequest request = new ForgotPasswordRequest();
+            request.setEmail("user@example.com");
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpService.issueOtp("user@example.com")).thenReturn("123456");
+            when(passwordResetOtpService.getOtpTtlMinutes()).thenReturn(15L);
+
+            authService.forgotPassword(request);
+
+            ArgumentCaptor<SimpleMailMessage> messageCaptor = ArgumentCaptor.forClass(SimpleMailMessage.class);
+            verify(mailSender).send(messageCaptor.capture());
+            assertThat(messageCaptor.getValue().getTo()).containsExactly("user@example.com");
+            assertThat(messageCaptor.getValue().getText()).contains("123456", "15 minutes");
+        }
+
+        @Test
+        @DisplayName("should invalidate the OTP when email delivery fails")
+        void shouldInvalidateOtpWhenEmailFails() {
+            User user = User.builder().email("user@example.com").provider("email").build();
+            ForgotPasswordRequest request = new ForgotPasswordRequest();
+            request.setEmail("user@example.com");
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordResetOtpService.issueOtp("user@example.com")).thenReturn("123456");
+            when(passwordResetOtpService.getOtpTtlMinutes()).thenReturn(15L);
+            doThrow(new MailSendException("SMTP unavailable"))
+                    .when(mailSender).send(any(SimpleMailMessage.class));
+
+            assertThatThrownBy(() -> authService.forgotPassword(request))
+                    .isInstanceOf(MailSendException.class);
+            verify(passwordResetOtpService).invalidateOtp("user@example.com");
+        }
+
+        @Test
+        @DisplayName("should consume the OTP before saving the new password")
+        void shouldConsumeOtpAndSaveNewPassword() {
+            User user = User.builder().email("user@example.com").provider("email").build();
+            ResetPasswordRequest request = new ResetPasswordRequest();
+            request.setEmail("user@example.com");
+            request.setOtp("123456");
+            request.setNewPassword("new-password");
+            when(userRepository.findByEmail("user@example.com")).thenReturn(Optional.of(user));
+            when(passwordEncoder.encode("new-password")).thenReturn("encoded-password");
+
+            authService.resetPassword(request);
+
+            InOrder inOrder = inOrder(passwordResetOtpService, userRepository);
+            inOrder.verify(passwordResetOtpService).verifyAndConsume("user@example.com", "123456");
+            inOrder.verify(userRepository).save(user);
+            assertThat(user.getPasswordHash()).isEqualTo("encoded-password");
         }
     }
 }
