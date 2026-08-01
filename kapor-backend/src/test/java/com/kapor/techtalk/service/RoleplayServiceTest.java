@@ -53,7 +53,13 @@ class RoleplayServiceTest {
                 .difficulty("intermediate")
                 .active(true)
                 .persona(TechTalkScenario.Persona.builder().name("김민수").role("Tech Lead").company("Kapor").build())
-                .mission(TechTalkScenario.Mission.builder().titleKo("장애 보고").build())
+                .mission(TechTalkScenario.Mission.builder()
+                        .titleKo("장애 보고")
+                        .objectives(List.of(TechTalkScenario.Objective.builder()
+                                .ko("영향과 대응 계획을 보고합니다.")
+                                .vi("Báo cáo ảnh hưởng và phương án xử lý.")
+                                .build()))
+                        .build())
                 .evaluationCriteria(TechTalkScenario.EvaluationCriteria.builder().build())
                 .build();
         when(scenarioRepository.findById("scenario-1")).thenReturn(Optional.of(scenario));
@@ -141,6 +147,64 @@ class RoleplayServiceTest {
         assertThat(storedSession.get().getTurns()).hasSize(1);
         assertThat(storedSession.get().getMessages().stream()
                 .filter(message -> "user".equals(message.getRole()))).hasSize(1);
+    }
+
+    @Test
+    void persistsObjectiveProgressAndSignalsMissionCompletionOnlyOnce() {
+        RoleplaySession.Evaluation evaluation = RoleplaySession.Evaluation.builder()
+                .grammar(90).vocabulary(90).politeness(90).status("completed")
+                .objectives(List.of(RoleplaySession.ObjectiveResult.builder()
+                        .objective("영향과 대응 계획을 보고합니다.")
+                        .completed(true)
+                        .evidence("오류율과 롤백 계획을 보고했습니다.")
+                        .build()))
+                .completionMessageKo("**필요한 보고를 모두 확인했습니다. 수고하셨습니다.**")
+                .build();
+        RoleplaySession.Evaluation regressedEvaluation = RoleplaySession.Evaluation.builder()
+                .grammar(90).vocabulary(90).politeness(90).status("completed")
+                .objectives(List.of(RoleplaySession.ObjectiveResult.builder()
+                        .objective("영향과 대응 계획을 보고합니다.")
+                        .completed(false)
+                        .evidence("")
+                        .build()))
+                .build();
+        when(aiProvider.evaluateTurn(any(), anyString()))
+                .thenReturn(
+                        Mono.just(evaluation),
+                        Mono.just(regressedEvaluation),
+                        Mono.error(new RoleplayAiException("evaluation unavailable", true)));
+        when(aiProvider.streamReply(any())).thenReturn(Flux.just("보고 내용을 확인했습니다."));
+        RoleplaySession started = service.start("user-1", "scenario-1");
+        StreamRoleplayTurnRequest request = request("mission-completed-turn");
+
+        List<RoleplayStreamEvent> events = service.streamTurn("user-1", started.getId(), request)
+                .collectList().block();
+        List<RoleplayStreamEvent> replay = service.streamTurn("user-1", started.getId(), request)
+                .collectList().block();
+        List<RoleplayStreamEvent> continued = service.streamTurn(
+                "user-1", started.getId(), request("continued-practice-turn")).collectList().block();
+        List<RoleplayStreamEvent> continuedWithoutEvaluation = service.streamTurn(
+                "user-1", started.getId(), request("evaluation-unavailable-turn")).collectList().block();
+
+        assertThat(events).extracting(RoleplayStreamEvent::getType)
+                .containsSubsequence("message.completed", "mission.completed", "done");
+        assertThat(replay).extracting(RoleplayStreamEvent::getType)
+                .containsSubsequence("message.completed", "mission.completed", "done");
+        assertThat(continued).extracting(RoleplayStreamEvent::getType)
+                .doesNotContain("mission.completed");
+        assertThat(continuedWithoutEvaluation).extracting(RoleplayStreamEvent::getType)
+                .doesNotContain("mission.completed");
+        assertThat(storedSession.get().getObjectiveProgress()).singleElement()
+                .satisfies(objective -> assertThat(objective.isCompleted()).isTrue());
+        assertThat(storedSession.get().getObjectivesCompletedAt()).isNotNull();
+        assertThat(storedSession.get().getTurns().getFirst().isMissionCompleted()).isTrue();
+        assertThat(storedSession.get().getTurns().getLast().isMissionCompleted()).isFalse();
+        RoleplayStreamEvent completedMessage = events.stream()
+                .filter(event -> "message.completed".equals(event.getType()))
+                .findFirst().orElseThrow();
+        assertThat(completedMessage.getMessage().getContent())
+                .contains("필요한 보고를 모두 확인했습니다. 수고하셨습니다.")
+                .doesNotContain("**");
     }
 
     @Test

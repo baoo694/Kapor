@@ -22,7 +22,10 @@ class GeminiRoleplayProviderTest {
         assertThat(properties.path("grammar").path("maximum").asInt()).isEqualTo(100);
         assertThat(properties.path("corrections").path("items").path("required").toString())
                 .contains("\"original\"");
+        assertThat(properties.path("objectives").path("items").path("required").toString())
+                .contains("\"completed\"");
         assertThat(schema.path("required").toString()).contains("\"feedbackVi\"");
+        assertThat(schema.path("required").toString()).contains("\"completionMessageKo\"");
     }
 
     @Test
@@ -34,6 +37,10 @@ class GeminiRoleplayProviderTest {
                   "politeness": -5,
                   "feedbackVi": "Nên dùng văn phong trang trọng.",
                   "usedRequiredVocabulary": ["장애", "không có"],
+                  "completionMessageKo": "보고를 마쳤습니다.",
+                  "objectives": [
+                    {"objective":"장애를 보고합니다.","completed":true,"evidence":"장애 때문에"}
+                  ],
                   "corrections": [
                     {"original":"문제 있어요","suggestion":"문제가 있습니다","type":"formality","noteVi":"Trang trọng hơn."},
                     {"original":"không hề có","suggestion":"무관","type":"grammar","noteVi":"Hallucinated."}
@@ -49,5 +56,8 @@ class GeminiRoleplayProviderTest {
         assertThat(evaluation.getCorrections()).singleElement()
                 .satisfies(correction -> assertThat(correction.getSuggestion()).isEqualTo("문제가 있습니다"));
         assertThat(evaluation.getUsedRequiredVocabulary()).containsExactly("장애");
+        assertThat(evaluation.getObjectives()).singleElement()
+                .satisfies(objective -> assertThat(objective.isCompleted()).isTrue());
+        assertThat(evaluation.getCompletionMessageKo()).isEqualTo("보고를 마쳤습니다.");
     }
 }

@@ -87,9 +87,16 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
                 .reduce("", (left, right) -> left + "\n" + right);
         String prompt = """
                 Evaluate the learner's latest Korean workplace message. Use the scenario, persona, objectives,
-                required vocabulary, and recent conversation supplied below. Scores are integers from 0 to 100.
-                Corrections must quote an exact substring of the learner message. Keep corrections concise and
-                write noteVi and feedbackVi in Vietnamese. Do not penalize established English IT terms.
+                required vocabulary, and the entire recent conversation supplied below. Scores are integers from
+                0 to 100. Evaluate mission objectives cumulatively using evidence from the conversation, returning
+                exactly one objective result for every scenario objective in the same order. An objective remains
+                completed once the transcript contains sufficient evidence. Corrections must quote an exact
+                substring of the learner message. Keep corrections concise and write noteVi and feedbackVi in
+                Vietnamese. Do not penalize established English IT terms.
+
+                If every objective is completed, completionMessageKo must be one natural, concise, in-character
+                Korean sentence that acknowledges completion and closes the scenario. Otherwise it must be an empty
+                string. The closing sentence must be plain text without Markdown, asterisks, headings, or bullets.
 
                 Learner message:
                 %s
@@ -233,6 +240,14 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
         node.path("usedRequiredVocabulary").forEach(item -> {
             if (item.isTextual() && source.contains(item.asText())) usedVocabulary.add(item.asText());
         });
+        List<RoleplaySession.ObjectiveResult> objectives = new ArrayList<>();
+        for (JsonNode item : node.path("objectives")) {
+            objectives.add(RoleplaySession.ObjectiveResult.builder()
+                    .objective(item.path("objective").asText("").trim())
+                    .completed(item.path("completed").asBoolean(false))
+                    .evidence(item.path("evidence").asText("").trim())
+                    .build());
+        }
         return RoleplaySession.Evaluation.builder()
                 .grammar(score(node.path("grammar").asInt()))
                 .vocabulary(score(node.path("vocabulary").asInt()))
@@ -241,6 +256,8 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
                 .feedbackVi(node.path("feedbackVi").asText("").trim())
                 .corrections(corrections)
                 .usedRequiredVocabulary(usedVocabulary)
+                .objectives(objectives)
+                .completionMessageKo(node.path("completionMessageKo").asText("").trim())
                 .build();
     }
 
@@ -301,12 +318,17 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
                   "politeness":{"type":"integer","minimum":0,"maximum":100},
                   "feedbackVi":{"type":"string"},
                   "usedRequiredVocabulary":{"type":"array","items":{"type":"string"}},
+                  "completionMessageKo":{"type":"string"},
+                  "objectives":{"type":"array","items":{"type":"object","properties":{
+                    "objective":{"type":"string"},"completed":{"type":"boolean"},"evidence":{"type":"string"}
+                  },"required":["objective","completed","evidence"]}},
                   "corrections":{"type":"array","items":{"type":"object","properties":{
                     "original":{"type":"string"},"suggestion":{"type":"string"},
                     "type":{"type":"string","enum":["particle","honorific","vocabulary","grammar","verb_ending","pronoun","formality"]},
                     "noteVi":{"type":"string"}
                   },"required":["original","suggestion","type","noteVi"]}}
-                },"required":["grammar","vocabulary","politeness","feedbackVi","usedRequiredVocabulary","corrections"]}
+                },"required":["grammar","vocabulary","politeness","feedbackVi","usedRequiredVocabulary",
+                  "objectives","completionMessageKo","corrections"]}
                 """);
     }
 

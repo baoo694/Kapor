@@ -142,6 +142,7 @@ public class RoleplayService {
 
         Mono<RoleplaySession.Evaluation> evaluationMono = aiProvider
                 .evaluateTurn(work.context(), request.getContent().trim())
+                .map(value -> normalizeObjectiveEvaluation(work.scenario(), work.session(), value))
                 .onErrorResume(error -> {
                     metrics.increment("evaluation.errors");
                     log.warn("TechTalk evaluation unavailable for turn {}: {}", work.turnId(), error.getMessage());
@@ -169,9 +170,18 @@ public class RoleplayService {
                 .concatWith(Mono.fromCallable(() -> completeTurn(
                                 userId, sessionId, work, evaluation.get(), reply.toString()))
                         .subscribeOn(Schedulers.boundedElastic())
-                        .map(message -> RoleplayStreamEvent.builder()
-                                .type("message.completed").sessionId(sessionId).turnId(work.turnId())
-                                .messageId(message.getId()).message(message).build()))
+                        .flatMapMany(completed -> {
+                            List<RoleplayStreamEvent> events = new ArrayList<>();
+                            events.add(RoleplayStreamEvent.builder()
+                                    .type("message.completed").sessionId(sessionId).turnId(work.turnId())
+                                    .messageId(completed.message().getId()).message(completed.message()).build());
+                            if (completed.missionCompleted()) {
+                                events.add(RoleplayStreamEvent.builder()
+                                        .type("mission.completed").sessionId(sessionId).turnId(work.turnId())
+                                        .allObjectivesCompleted(true).build());
+                            }
+                            return Flux.fromIterable(events);
+                        }))
                 .concatWith(Mono.fromSupplier(() -> RoleplayStreamEvent.builder()
                         .type("done").sessionId(sessionId).turnId(work.turnId()).build()))
                 .onErrorResume(error -> Mono.fromCallable(() -> {
@@ -391,7 +401,7 @@ public class RoleplayService {
         }
     }
 
-    private RoleplaySession.Message completeTurn(
+    private CompletedTurn completeTurn(
             String userId,
             String sessionId,
             TurnWork work,
@@ -406,6 +416,17 @@ public class RoleplayService {
             RoleplaySession session = ownedActiveSession(userId, sessionId);
             RoleplaySession.Message userMessage = message(session, work.userMessageId());
             userMessage.setEvaluation(evaluation == null ? unavailableEvaluation() : evaluation);
+            boolean missionCompleted = evaluation != null && evaluation.isAllObjectivesCompleted()
+                    && session.getObjectivesCompletedAt() == null;
+            if (evaluation != null && "completed".equals(evaluation.getStatus())
+                    && evaluation.getObjectives() != null && !evaluation.getObjectives().isEmpty()) {
+                session.setObjectiveProgress(new ArrayList<>(evaluation.getObjectives()));
+            }
+            if (missionCompleted) {
+                session.setObjectivesCompletedAt(Instant.now());
+                String closing = plainCompletionMessage(evaluation.getCompletionMessageKo());
+                if (!reply.contains(closing)) reply = reply + "\n\n" + closing;
+            }
             String aiMessageId = UUID.randomUUID().toString();
             RoleplaySession.Message aiMessage = RoleplaySession.Message.builder()
                     .id(aiMessageId).role("ai").content(reply).source("ai")
@@ -414,11 +435,13 @@ public class RoleplayService {
             RoleplaySession.Turn turn = turn(session, work.turnId());
             turn.setAiMessageId(aiMessageId);
             turn.setStatus("completed");
+            turn.setMissionCompleted(missionCompleted);
             turn.setCompletedAt(Instant.now());
             session.setLastActivityAt(turn.getCompletedAt());
             sessionRepository.save(session);
             metrics.increment("turns.completed");
-            return aiMessage;
+            if (missionCompleted) metrics.increment("missions.completed");
+            return new CompletedTurn(aiMessage, missionCompleted);
         }
     }
 
@@ -454,6 +477,11 @@ public class RoleplayService {
         if (work.aiMessage() != null) {
             events.add(RoleplayStreamEvent.builder().type("message.completed").sessionId(work.session().getId())
                     .turnId(work.turnId()).messageId(work.aiMessage().getId()).message(work.aiMessage()).build());
+            RoleplaySession.Turn completedTurn = turn(work.session(), work.turnId());
+            if (completedTurn.isMissionCompleted()) {
+                events.add(RoleplayStreamEvent.builder().type("mission.completed").sessionId(work.session().getId())
+                        .turnId(work.turnId()).allObjectivesCompleted(true).build());
+            }
             events.add(RoleplayStreamEvent.builder().type("done").sessionId(work.session().getId())
                     .turnId(work.turnId()).build());
         } else {
@@ -504,6 +532,55 @@ public class RoleplayService {
             return scenario.getMission().getRequiredVocabulary();
         }
         return scenario.getRequiredVocabulary() == null ? List.of() : scenario.getRequiredVocabulary();
+    }
+
+    private RoleplaySession.Evaluation normalizeObjectiveEvaluation(
+            TechTalkScenario scenario,
+            RoleplaySession session,
+            RoleplaySession.Evaluation evaluation
+    ) {
+        List<RoleplaySession.ObjectiveResult> progress = evaluation.getObjectives() == null
+                ? new ArrayList<>()
+                : new ArrayList<>(evaluation.getObjectives());
+        List<RoleplaySession.ObjectiveResult> previous = session.getObjectiveProgress() == null
+                ? List.of()
+                : session.getObjectiveProgress();
+        int expectedObjectives = scenario.getMission() != null
+                && scenario.getMission().getObjectives() != null
+                && !scenario.getMission().getObjectives().isEmpty()
+                ? scenario.getMission().getObjectives().size()
+                : scenario.getObjectives() == null ? 0 : scenario.getObjectives().size();
+        if (progress.size() != expectedObjectives) {
+            progress = new ArrayList<>(previous);
+        } else {
+            for (int index = 0; index < Math.min(progress.size(), previous.size()); index++) {
+                RoleplaySession.ObjectiveResult earlier = previous.get(index);
+                RoleplaySession.ObjectiveResult current = progress.get(index);
+                if (earlier.isCompleted() && !current.isCompleted()) {
+                    current.setCompleted(true);
+                    current.setEvidence(earlier.getEvidence());
+                }
+            }
+        }
+        evaluation.setObjectives(progress);
+        boolean allCompleted = expectedObjectives > 0
+                && progress.size() == expectedObjectives
+                && progress.stream().allMatch(RoleplaySession.ObjectiveResult::isCompleted);
+        evaluation.setAllObjectivesCompleted(allCompleted);
+        if (!allCompleted) evaluation.setCompletionMessageKo("");
+        return evaluation;
+    }
+
+    private String plainCompletionMessage(String candidate) {
+        String plain = candidate == null ? "" : candidate
+                .replace("**", "")
+                .replace("*", "")
+                .replace("`", "")
+                .replace("#", "")
+                .trim();
+        return containsKorean(plain)
+                ? plain
+                : "모든 목표를 잘 완료하셨습니다. 수고하셨습니다.";
     }
 
     private RoleplaySession.Evaluation unavailableEvaluation() {
@@ -559,4 +636,6 @@ public class RoleplayService {
             boolean replay,
             RoleplayContext context
     ) { }
+
+    private record CompletedTurn(RoleplaySession.Message message, boolean missionCompleted) { }
 }

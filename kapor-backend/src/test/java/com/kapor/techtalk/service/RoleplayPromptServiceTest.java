@@ -2,6 +2,7 @@ package com.kapor.techtalk.service;
 
 import com.kapor.admin.model.AdminPrompt;
 import com.kapor.admin.repository.AdminPromptRepository;
+import com.kapor.techtalk.model.RoleplaySession;
 import com.kapor.techtalk.model.TechTalkScenario;
 import org.junit.jupiter.api.Test;
 
@@ -24,7 +25,9 @@ class RoleplayPromptServiceTest {
 
         RoleplayPromptService.PromptSnapshot snapshot = service.resolve(scenario);
 
-        assertThat(snapshot.content()).isEqualTo("김민수 / 장애 보고 / 장애, 롤백");
+        assertThat(snapshot.content())
+                .startsWith("김민수 / 장애 보고 / 장애, 롤백")
+                .contains(RoleplayPromptService.PLAIN_TEXT_OUTPUT_RULE);
         assertThat(snapshot.version()).startsWith("scenario:");
         verifyNoInteractions(repository);
     }
@@ -44,8 +47,27 @@ class RoleplayPromptServiceTest {
 
         RoleplayPromptService.PromptSnapshot snapshot = service.resolve(scenario());
 
-        assertThat(snapshot.content()).isEqualTo("Act as Tech Lead at Kapor. 장애를 설명합니다.");
+        assertThat(snapshot.content())
+                .startsWith("Act as Tech Lead at Kapor. 장애를 설명합니다.")
+                .contains(RoleplayPromptService.PLAIN_TEXT_OUTPUT_RULE);
         assertThat(snapshot.version()).isEqualTo("techtalk.roleplay.system:v2");
+    }
+
+    @Test
+    void appliesPlainTextRuleToPromptSnapshotFromExistingSession() {
+        TechTalkScenario scenario = scenario();
+        RoleplaySession session = RoleplaySession.builder()
+                .promptSnapshot("Legacy prompt without an output-format rule.")
+                .promptVersion("techtalk.roleplay.system:v1")
+                .messages(List.of())
+                .build();
+
+        RoleplayContext context = service.context(scenario, session);
+
+        assertThat(context.systemPrompt())
+                .startsWith("Legacy prompt without an output-format rule.")
+                .contains(RoleplayPromptService.PLAIN_TEXT_OUTPUT_RULE);
+        verifyNoInteractions(repository);
     }
 
     private TechTalkScenario scenario() {

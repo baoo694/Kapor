@@ -32,6 +32,9 @@ public class RoleplaySession {
     private String promptSnapshot;
     private String promptVersion;
     private String modelName;
+    @Builder.Default
+    private List<ObjectiveResult> objectiveProgress = new ArrayList<>();
+    private Instant objectivesCompletedAt;
     private FinalEvaluation finalEvaluation;
     private Instant startedAt;
     private Instant lastActivityAt;
@@ -65,6 +68,10 @@ public class RoleplaySession {
         private List<Correction> corrections = new ArrayList<>();
         @Builder.Default
         private List<String> usedRequiredVocabulary = new ArrayList<>();
+        @Builder.Default
+        private List<ObjectiveResult> objectives = new ArrayList<>();
+        private boolean allObjectivesCompleted;
+        private String completionMessageKo;
     }
 
     @Data @Builder @NoArgsConstructor @AllArgsConstructor
@@ -83,6 +90,7 @@ public class RoleplaySession {
         private String aiMessageId;
         private String status;
         private String errorCode;
+        private boolean missionCompleted;
         private Instant createdAt;
         private Instant completedAt;
     }

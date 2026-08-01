@@ -154,12 +154,18 @@ class MessageEvaluation {
     required this.status,
     required this.feedbackVi,
     required this.usedRequiredVocabulary,
+    required this.objectives,
+    required this.allObjectivesCompleted,
+    required this.completionMessageKo,
   });
 
   final int grammar, vocabulary, politeness;
   final List<MessageCorrection> corrections;
   final String status, feedbackVi;
   final List<String> usedRequiredVocabulary;
+  final List<ObjectiveResult> objectives;
+  final bool allObjectivesCompleted;
+  final String completionMessageKo;
 
   factory MessageEvaluation.fromJson(Map<String, dynamic> json) =>
       MessageEvaluation(
@@ -169,6 +175,14 @@ class MessageEvaluation {
         status: json['status']?.toString() ?? 'completed',
         feedbackVi: json['feedbackVi']?.toString() ?? '',
         usedRequiredVocabulary: _strings(json['usedRequiredVocabulary']),
+        objectives: json['objectives'] is List
+            ? (json['objectives'] as List)
+                  .whereType<Map>()
+                  .map((item) => ObjectiveResult.fromJson(_map(item)))
+                  .toList()
+            : const [],
+        allObjectivesCompleted: json['allObjectivesCompleted'] == true,
+        completionMessageKo: json['completionMessageKo']?.toString() ?? '',
         corrections: json['corrections'] is List
             ? (json['corrections'] as List)
                   .map(
@@ -250,6 +264,8 @@ class RoleplaySession {
     required this.messages,
     required this.hintsUsed,
     required this.durationSeconds,
+    required this.objectiveProgress,
+    this.objectivesCompletedAt,
     this.finalEvaluation,
   });
 
@@ -257,6 +273,8 @@ class RoleplaySession {
   final List<RoleplayMessage> messages;
   final int hintsUsed;
   final int durationSeconds;
+  final List<ObjectiveResult> objectiveProgress;
+  final DateTime? objectivesCompletedAt;
   final RoleplayFinalEvaluation? finalEvaluation;
 
   factory RoleplaySession.fromJson(Map<String, dynamic> json) =>
@@ -272,6 +290,15 @@ class RoleplaySession {
             : const [],
         hintsUsed: (json['hintsUsed'] as num?)?.toInt() ?? 0,
         durationSeconds: (json['durationSeconds'] as num?)?.toInt() ?? 0,
+        objectiveProgress: json['objectiveProgress'] is List
+            ? (json['objectiveProgress'] as List)
+                  .whereType<Map>()
+                  .map((item) => ObjectiveResult.fromJson(_map(item)))
+                  .toList()
+            : const [],
+        objectivesCompletedAt: DateTime.tryParse(
+          json['objectivesCompletedAt']?.toString() ?? '',
+        ),
         finalEvaluation: json['finalEvaluation'] is Map
             ? RoleplayFinalEvaluation.fromJson(_map(json['finalEvaluation']))
             : null,
@@ -281,6 +308,8 @@ class RoleplaySession {
     List<RoleplayMessage>? messages,
     String? status,
     RoleplayFinalEvaluation? finalEvaluation,
+    List<ObjectiveResult>? objectiveProgress,
+    DateTime? objectivesCompletedAt,
   }) => RoleplaySession(
     id: id,
     scenarioId: scenarioId,
@@ -288,6 +317,8 @@ class RoleplaySession {
     messages: messages ?? this.messages,
     hintsUsed: hintsUsed,
     durationSeconds: durationSeconds,
+    objectiveProgress: objectiveProgress ?? this.objectiveProgress,
+    objectivesCompletedAt: objectivesCompletedAt ?? this.objectivesCompletedAt,
     finalEvaluation: finalEvaluation ?? this.finalEvaluation,
   );
 }
@@ -391,6 +422,7 @@ class RoleplayStreamEvent {
     this.code,
     this.messageText,
     this.retryable = false,
+    this.allObjectivesCompleted = false,
   });
 
   final String type;
@@ -398,6 +430,7 @@ class RoleplayStreamEvent {
   final RoleplayMessage? message;
   final MessageEvaluation? evaluation;
   final bool retryable;
+  final bool allObjectivesCompleted;
 
   factory RoleplayStreamEvent.fromJson(
     String eventType,
@@ -411,6 +444,7 @@ class RoleplayStreamEvent {
     code: json['code']?.toString(),
     messageText: json['messageText']?.toString(),
     retryable: json['retryable'] == true,
+    allObjectivesCompleted: json['allObjectivesCompleted'] == true,
     message: json['message'] is Map
         ? RoleplayMessage.fromJson(_map(json['message']))
         : null,

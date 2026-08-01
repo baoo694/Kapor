@@ -31,6 +31,14 @@ class TechTalkStrings {
   String get retry => en ? 'Retry' : 'Thử lại';
   String get evaluationUnavailable =>
       en ? 'Evaluation unavailable' : 'Chưa thể chấm lượt này';
+  String get allObjectivesCompletedTitle =>
+      en ? 'Mission completed' : 'Đã hoàn thành mục tiêu';
+  String get allObjectivesCompletedMessage => en
+      ? 'You have completed all mission objectives.'
+      : 'Bạn đã hoàn thành tất cả mục tiêu.';
+  String get viewResult => en ? 'View result' : 'Xem kết quả';
+  String get continuePracticing =>
+      en ? 'Continue practicing' : 'Tiếp tục luyện tập';
   String get corrections => en ? 'Corrections' : 'Chỉnh sửa đề xuất';
   String get result => en ? 'TechTalk Result' : 'Kết quả TechTalk';
   String get overall => en ? 'OVERALL' : 'ĐIỂM TỔNG';

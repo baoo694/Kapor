@@ -17,6 +17,7 @@ public class RoleplayStreamEvent {
     String delta;
     RoleplaySession.Message message;
     RoleplaySession.Evaluation evaluation;
+    Boolean allObjectivesCompleted;
     String code;
     String messageText;
     Boolean retryable;

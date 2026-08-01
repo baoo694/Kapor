@@ -91,4 +91,55 @@ void main() {
     expect(const TechTalkStrings('vi').history, 'Lịch sử');
     expect(const TechTalkStrings('en').history, 'History');
   });
+
+  test('parses per-turn objective progress and mission completion event', () {
+    final session = RoleplaySession.fromJson({
+      'id': 'session-1',
+      'scenarioId': 'incident',
+      'status': 'active',
+      'objectiveProgress': [
+        {
+          'objective': '사용자 영향을 설명합니다.',
+          'completed': true,
+          'evidence': '일부 사용자에게 영향이 있습니다.',
+        },
+      ],
+      'objectivesCompletedAt': '2026-08-01T10:00:00Z',
+      'messages': [
+        {
+          'id': 'user-1',
+          'role': 'user',
+          'content': '일부 사용자에게 영향이 있습니다.',
+          'evaluation': {
+            'grammar': 90,
+            'vocabulary': 90,
+            'politeness': 90,
+            'status': 'completed',
+            'objectives': [
+              {
+                'objective': '사용자 영향을 설명합니다.',
+                'completed': true,
+                'evidence': '일부 사용자에게 영향이 있습니다.',
+              },
+            ],
+            'allObjectivesCompleted': true,
+            'completionMessageKo': '필요한 내용을 모두 확인했습니다.',
+          },
+        },
+      ],
+    });
+    final event = RoleplayStreamEvent.fromJson('mission.completed', {
+      'allObjectivesCompleted': true,
+    });
+
+    expect(session.objectiveProgress.single.completed, isTrue);
+    expect(session.objectivesCompletedAt, isNotNull);
+    expect(session.messages.single.evaluation!.allObjectivesCompleted, isTrue);
+    expect(event.type, 'mission.completed');
+    expect(event.allObjectivesCompleted, isTrue);
+    expect(
+      const TechTalkStrings('vi').allObjectivesCompletedMessage,
+      'Bạn đã hoàn thành tất cả mục tiêu.',
+    );
+  });
 }

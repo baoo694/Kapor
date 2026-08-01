@@ -60,6 +60,7 @@ class _TechTalkScreenState extends State<TechTalkScreen> {
   bool _recording = false;
   bool _transcribing = false;
   bool _allowPop = false;
+  bool _missionCompletionPromptShown = false;
 
   @override
   void initState() {
@@ -141,6 +142,7 @@ class _TechTalkScreenState extends State<TechTalkScreen> {
     });
     _scrollToBottom();
 
+    var shouldShowMissionCompletion = false;
     try {
       await for (final event in _service.streamTurn(
         sessionId: session.id,
@@ -187,6 +189,9 @@ class _TechTalkScreenState extends State<TechTalkScreen> {
               }
             }
             break;
+          case 'mission.completed':
+            shouldShowMissionCompletion = event.allObjectivesCompleted;
+            break;
           case 'error':
             final failed = _findMessage(temporaryAiId);
             if (failed != null) {
@@ -231,6 +236,9 @@ class _TechTalkScreenState extends State<TechTalkScreen> {
       });
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+    if (shouldShowMissionCompletion && mounted) {
+      await _showMissionCompletedDialog();
     }
   }
 
@@ -286,6 +294,48 @@ class _TechTalkScreenState extends State<TechTalkScreen> {
     } finally {
       if (mounted) setState(() => _ending = false);
     }
+  }
+
+  Future<void> _showMissionCompletedDialog() async {
+    if (_missionCompletionPromptShown || !mounted) return;
+    _missionCompletionPromptShown = true;
+    final strings = TechTalkStrings(
+      context.read<SettingsProvider>().localeCode,
+    );
+    final action = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          icon: const Icon(
+            Icons.verified_rounded,
+            color: AppTheme.primary,
+            size: 38,
+          ),
+          title: Text(
+            strings.allObjectivesCompletedTitle,
+            textAlign: TextAlign.center,
+          ),
+          content: Text(
+            strings.allObjectivesCompletedMessage,
+            textAlign: TextAlign.center,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, 'continue'),
+              child: Text(strings.continuePracticing),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, 'result'),
+              icon: const Icon(Icons.assessment_outlined),
+              label: Text(strings.viewResult),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (action == 'result' && mounted) await _end();
   }
 
   Future<void> _requestLeave() async {
@@ -442,6 +492,7 @@ class _TechTalkScreenState extends State<TechTalkScreen> {
       );
     }
     final scenario = widget.scenario;
+    final objectiveProgress = _currentObjectiveProgress;
     return PopScope(
       canPop: _allowPop,
       onPopInvokedWithResult: (didPop, result) {
@@ -478,7 +529,7 @@ class _TechTalkScreenState extends State<TechTalkScreen> {
         body: SafeArea(
           child: Column(
             children: [
-              _scenarioHeader(scenario, strings),
+              _scenarioHeader(scenario, strings, objectiveProgress),
               Expanded(
                 child: ListView(
                   controller: _scrollController,
@@ -530,6 +581,7 @@ class _TechTalkScreenState extends State<TechTalkScreen> {
   Widget _scenarioHeader(
     TechTalkScenario scenario,
     TechTalkStrings strings,
+    List<ObjectiveResult> objectiveProgress,
   ) => Container(
     padding: const EdgeInsets.all(14),
     color: AppTheme.surface,
@@ -572,16 +624,27 @@ class _TechTalkScreenState extends State<TechTalkScreen> {
             ),
           ),
           children: [
-            ...scenario.mission.objectives.map(
-              (objective) => ListTile(
+            ...scenario.mission.objectives.indexed.map(
+              (entry) => ListTile(
                 dense: true,
-                leading: const Icon(Icons.check_circle_outline, size: 16),
+                leading: Icon(
+                  entry.$1 < objectiveProgress.length &&
+                          objectiveProgress[entry.$1].completed
+                      ? Icons.check_circle
+                      : Icons.check_circle_outline,
+                  size: 16,
+                  color:
+                      entry.$1 < objectiveProgress.length &&
+                          objectiveProgress[entry.$1].completed
+                      ? AppTheme.primary
+                      : AppTheme.textSecondary,
+                ),
                 title: Text(
-                  strings.en && objective.en.isNotEmpty
-                      ? objective.en
-                      : objective.vi.isNotEmpty
-                      ? objective.vi
-                      : objective.ko,
+                  strings.en && entry.$2.en.isNotEmpty
+                      ? entry.$2.en
+                      : entry.$2.vi.isNotEmpty
+                      ? entry.$2.vi
+                      : entry.$2.ko,
                 ),
               ),
             ),
@@ -916,6 +979,16 @@ class _TechTalkScreenState extends State<TechTalkScreen> {
       if (message.id == id) return message;
     }
     return null;
+  }
+
+  List<ObjectiveResult> get _currentObjectiveProgress {
+    final persisted = _session?.objectiveProgress ?? const <ObjectiveResult>[];
+    if (persisted.isNotEmpty) return persisted;
+    for (final message in _messages.reversed) {
+      final progress = message.evaluation?.objectives;
+      if (progress != null && progress.isNotEmpty) return progress;
+    }
+    return const [];
   }
 
   void _replaceMessage(String id, RoleplayMessage replacement) {
