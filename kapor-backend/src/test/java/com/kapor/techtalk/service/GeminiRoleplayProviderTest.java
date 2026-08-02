@@ -2,6 +2,7 @@ package com.kapor.techtalk.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.kapor.techtalk.model.RoleplaySession;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -83,5 +84,18 @@ class GeminiRoleplayProviderTest {
                 .isInstanceOfSatisfying(RoleplayAiException.class,
                         error -> assertThat(error.getCode()).isEqualTo("GEMINI_RESPONSE_TRUNCATED"))
                 .hasMessage("Gemini truncated the structured evaluation before it was complete.");
+    }
+
+    @Test
+    void disablesThinkingForGemini25StructuredEvaluations() {
+        ReflectionTestUtils.setField(provider, "modelName", "gemini-2.5-flash");
+        ReflectionTestUtils.setField(provider, "evaluationMaxOutputTokens", 2048);
+        ReflectionTestUtils.setField(provider, "evaluationThinkingBudget", 0);
+
+        ObjectNode request = ReflectionTestUtils.invokeMethod(provider, "structuredRequest", "evaluate", objectMapper.createObjectNode());
+
+        assertThat(request.path("generationConfig").path("maxOutputTokens").asInt()).isEqualTo(2048);
+        assertThat(request.path("generationConfig").path("thinkingConfig").path("thinkingBudget").asInt())
+                .isZero();
     }
 }

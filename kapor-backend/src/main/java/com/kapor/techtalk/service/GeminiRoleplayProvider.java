@@ -57,6 +57,9 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
     @Value("${techtalk.ai.evaluation-max-output-tokens:2048}")
     private int evaluationMaxOutputTokens;
 
+    @Value("${techtalk.ai.evaluation-thinking-budget:0}")
+    private int evaluationThinkingBudget;
+
     @Override
     public Flux<String> streamReply(RoleplayContext context) {
         if (!configured()) return Flux.error(notConfigured());
@@ -183,14 +186,7 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
     }
 
     private Mono<JsonNode> generateStructured(String prompt, JsonNode schema) {
-        ObjectNode root = objectMapper.createObjectNode();
-        root.putArray("contents").addObject().put("role", "user")
-                .putArray("parts").addObject().put("text", prompt);
-        ObjectNode config = root.putObject("generationConfig");
-        config.put("temperature", 0.15);
-        config.put("maxOutputTokens", Math.max(512, Math.min(4096, evaluationMaxOutputTokens)));
-        config.put("responseMimeType", "application/json");
-        config.set("responseJsonSchema", schema);
+        ObjectNode root = structuredRequest(prompt, schema);
         return webClientBuilder.build().post()
                 .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", modelName)
                 .header("x-goog-api-key", apiKey)
@@ -205,6 +201,25 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
                 .retryWhen(Retry.max(1).filter(this::retryable))
                 .map(this::structuredCandidate)
                 .onErrorMap(error -> normalizedError(error, "Gemini không thể hoàn tất đánh giá."));
+    }
+
+    private ObjectNode structuredRequest(String prompt, JsonNode schema) {
+        ObjectNode root = objectMapper.createObjectNode();
+        root.putArray("contents").addObject().put("role", "user")
+                .putArray("parts").addObject().put("text", prompt);
+        ObjectNode config = root.putObject("generationConfig");
+        config.put("temperature", 0.15);
+        config.put("maxOutputTokens", Math.max(512, Math.min(4096, evaluationMaxOutputTokens)));
+        config.put("responseMimeType", "application/json");
+        config.set("responseJsonSchema", schema);
+        // Gemini 2.5 Flash enables dynamic thinking by default. For a small
+        // deterministic JSON assessment, reserve the output budget for the
+        // schema response instead of hidden reasoning tokens.
+        if (modelName != null && modelName.contains("gemini-2.5")) {
+            config.putObject("thinkingConfig")
+                    .put("thinkingBudget", Math.max(0, evaluationThinkingBudget));
+        }
+        return root;
     }
 
     private JsonNode structuredCandidate(JsonNode response) {
