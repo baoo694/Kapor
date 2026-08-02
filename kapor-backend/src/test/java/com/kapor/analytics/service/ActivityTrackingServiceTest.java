@@ -33,6 +33,9 @@ class ActivityTrackingServiceTest {
     @Mock
     private StreakService streakService;
 
+    @Mock
+    private UserStatsService userStatsService;
+
     @InjectMocks
     private ActivityTrackingService activityTrackingService;
 
@@ -52,6 +55,7 @@ class ActivityTrackingServiceTest {
         ArgumentCaptor<DailyActivity> activityCaptor = ArgumentCaptor.forClass(DailyActivity.class);
         verify(eventRepository).insert(any(LearningActivityEvent.class));
         verify(dailyActivityRepository).save(activityCaptor.capture());
+        verify(userStatsService).addActivity(org.mockito.ArgumentMatchers.eq("user-1"), any(LearningActivityEvent.class));
         verify(streakService).updateStreakForUser(org.mockito.ArgumentMatchers.eq("user-1"), any(LocalDate.class));
 
         DailyActivity activity = activityCaptor.getValue();
@@ -73,6 +77,7 @@ class ActivityTrackingServiceTest {
 
         verify(eventRepository, never()).insert(any(LearningActivityEvent.class));
         verify(dailyActivityRepository, never()).save(any());
+        verify(userStatsService, never()).addActivity(anyString(), any(LearningActivityEvent.class));
         verify(streakService, never()).updateStreakForUser(anyString(), any(LocalDate.class));
     }
 }

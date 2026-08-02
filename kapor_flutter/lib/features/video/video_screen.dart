@@ -17,6 +17,7 @@ class VideoScreen extends StatefulWidget {
 class _VideoScreenState extends State<VideoScreen> {
   static const _videoTeal = Color(0xFF2DD4BF);
   static const _videoAmber = Color(0xFFFBBF24);
+  static const _completionThreshold = 0.85;
 
   final _service = VideoService();
   late Future<List<LearningVideo>> _videosFuture;
@@ -28,6 +29,7 @@ class _VideoScreenState extends State<VideoScreen> {
   double _durationSeconds = 0;
   double _playbackRate = 1;
   bool _isPlaying = false;
+  bool _completionReported = false;
   final Set<String> _completedQuizzes = {};
   String? _error;
 
@@ -78,6 +80,7 @@ class _VideoScreenState extends State<VideoScreen> {
     _positionSubscription = player.videoStateStream.listen((state) {
       if (mounted) {
         setState(() => _position = state.position.inMilliseconds / 1000);
+        _reportCompletionIfEligible();
       }
     });
     _playerValueSubscription = player.stream.listen((value) {
@@ -107,8 +110,35 @@ class _VideoScreenState extends State<VideoScreen> {
       _durationSeconds = video.durationSeconds.toDouble();
       _playbackRate = 1;
       _isPlaying = true;
+      _completionReported = false;
       _error = null;
     });
+  }
+
+  Future<void> _reportCompletionIfEligible() async {
+    final video = _video;
+    final duration = _durationSeconds;
+    if (_completionReported ||
+        video == null ||
+        duration <= 0 ||
+        _position / duration < _completionThreshold) {
+      return;
+    }
+
+    // Mark before awaiting so frequent player position events cannot submit
+    // duplicate completion requests. The backend independently de-duplicates
+    // the learning event per user and video.
+    _completionReported = true;
+    try {
+      final completed = await _service.completeVideo(
+        video.id,
+        _position.ceil(),
+      );
+      if (!completed) _completionReported = false;
+    } catch (error) {
+      _completionReported = false;
+      debugPrint('Could not record Video Lab completion: $error');
+    }
   }
 
   @override

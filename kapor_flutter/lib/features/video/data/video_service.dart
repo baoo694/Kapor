@@ -138,12 +138,13 @@ class VideoService {
     try {
       final response = await _dio.get('/videos');
       final body = response.data;
-      if (body is! Map || body['success'] != true || body['data'] is! List)
+      if (body is! Map || body['success'] != true || body['data'] is! List) {
         throw Exception(
           body is Map
               ? body['message'] ?? 'Không thể tải video.'
               : 'Phản hồi video không hợp lệ.',
         );
+      }
       return (body['data'] as List)
           .whereType<Map>()
           .map(
@@ -170,6 +171,18 @@ class VideoService {
         body['success'] == true &&
         body['data'] is Map &&
         body['data']['correct'] == true;
+  }
+
+  Future<bool> completeVideo(String videoId, int watchedSeconds) async {
+    final response = await _dio.post(
+      '/videos/$videoId/complete',
+      data: {'watchedSeconds': watchedSeconds},
+    );
+    final body = response.data;
+    return body is Map &&
+        body['success'] == true &&
+        body['data'] is Map &&
+        body['data']['completed'] == true;
   }
 
   Future<bool> saveVideoToken(String videoId, String surface) async {

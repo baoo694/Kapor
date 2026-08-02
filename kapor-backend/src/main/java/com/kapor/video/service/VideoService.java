@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class VideoService {
 
+    public static final double COMPLETION_THRESHOLD = 0.85;
     private static final double MAX_TRANSLATION_GROUP_GAP_SECONDS = 1.0;
     private static final int MAX_TRANSLATION_GROUP_LINES = 8;
     private static final int MAX_TRANSLATION_GROUP_CHARACTERS = 180;
@@ -248,6 +249,29 @@ public class VideoService {
                 .findFirst()
                 .orElseThrow(() -> new com.kapor.common.exception.ResourceNotFoundException("Quiz", "id", quizId));
         return marker.getCorrectAnswer() != null && marker.getCorrectAnswer() == answer;
+    }
+
+    /**
+     * Validates that a learner has reached the minimum watch threshold using
+     * the duration configured for the video. The client reports its current
+     * player position; the server remains the source of truth for duration
+     * and the required completion percentage.
+     */
+    public int validateCompletion(String videoId, int watchedSeconds) {
+        Video video = findVideo(videoId);
+        Integer durationSeconds = video.getDurationSeconds();
+        if (durationSeconds == null || durationSeconds <= 0) {
+            throw new IllegalArgumentException("Video chưa có thời lượng để ghi nhận hoàn thành");
+        }
+        if (watchedSeconds < 0) {
+            throw new IllegalArgumentException("Thời gian đã xem không hợp lệ");
+        }
+
+        int boundedWatchedSeconds = Math.min(watchedSeconds, durationSeconds);
+        if ((double) boundedWatchedSeconds / durationSeconds < COMPLETION_THRESHOLD) {
+            throw new IllegalArgumentException("Cần xem ít nhất 85% video để hoàn thành");
+        }
+        return boundedWatchedSeconds;
     }
 
     private String extractYoutubeId(String url) {

@@ -3,7 +3,6 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:lucide_icons/lucide_icons.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/providers/settings_provider.dart';
 import '../auth/providers/auth_provider.dart';
 
@@ -29,32 +28,38 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<AuthProvider>().fetchCurrentUser();
+      _refreshProfile();
     });
   }
 
+  Future<void> _refreshProfile() =>
+      context.read<AuthProvider>().fetchCurrentUser(showLoading: false);
+
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
     final bgColor = Theme.of(context).scaffoldBackgroundColor;
-    
+
     return Stack(
       children: [
         Scaffold(
           backgroundColor: bgColor,
           body: SafeArea(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.only(bottom: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _buildHeader(),
-                  _buildUserInfoCard(),
-                  const SizedBox(height: 12),
-                  _buildStatsGrid(),
-                  const SizedBox(height: 12),
-                  _buildSettingsSection(),
-                ],
+            child: RefreshIndicator(
+              onRefresh: _refreshProfile,
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.only(bottom: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _buildHeader(),
+                    _buildUserInfoCard(),
+                    const SizedBox(height: 12),
+                    _buildStatsGrid(),
+                    const SizedBox(height: 12),
+                    _buildSettingsSection(),
+                  ],
+                ),
               ),
             ),
           ),
@@ -87,7 +92,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final displayName = user?['displayName'] ?? 'Người dùng';
           final email = user?['email'] ?? 'Chưa cập nhật email';
           final language = user?['nativeLanguage'] ?? 'vi';
-          
+
           final textColor = Theme.of(context).colorScheme.onBackground;
 
           return _KCard(
@@ -99,7 +104,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     color: _teal.withOpacity(0.18),
-                    border: Border.all(color: _teal.withOpacity(0.40), width: 2),
+                    border: Border.all(
+                      color: _teal.withOpacity(0.40),
+                      width: 2,
+                    ),
                   ),
                   alignment: Alignment.center,
                   child: const Text('👨‍💻', style: TextStyle(fontSize: 24)),
@@ -128,7 +136,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       const SizedBox(height: 6),
                       Row(
                         children: [
-                          _Badge(text: language == 'vi' ? '🇻🇳 Việt' : '🇺🇸 English', color: _purple),
+                          _Badge(
+                            text: language == 'vi'
+                                ? '🇻🇳 Việt'
+                                : '🇺🇸 English',
+                            color: _purple,
+                          ),
                         ],
                       ),
                     ],
@@ -141,7 +154,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
-
 
   Widget _buildStatsGrid() {
     return Padding(
@@ -158,10 +170,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
           final textColor = Theme.of(context).colorScheme.onBackground;
 
           final stats = [
-            {'label': 'Phút học', 'value': studyMins.toString(), 'icon': LucideIcons.clock, 'color': _teal},
-            {'label': 'Thẻ đã ôn', 'value': cardsReviewed.toString(), 'icon': LucideIcons.brain, 'color': _purple},
-            {'label': 'Roleplay', 'value': roleplaySessions.toString(), 'icon': LucideIcons.messageSquare, 'color': _green},
-            {'label': 'Video', 'value': videosWatched.toString(), 'icon': LucideIcons.play, 'color': _orange},
+            {
+              'label': 'Phút học',
+              'value': studyMins.toString(),
+              'icon': LucideIcons.clock,
+              'color': _teal,
+            },
+            {
+              'label': 'Thẻ đã ôn',
+              'value': cardsReviewed.toString(),
+              'icon': LucideIcons.brain,
+              'color': _purple,
+            },
+            {
+              'label': 'Roleplay',
+              'value': roleplaySessions.toString(),
+              'icon': LucideIcons.messageSquare,
+              'color': _green,
+            },
+            {
+              'label': 'Video',
+              'value': videosWatched.toString(),
+              'icon': LucideIcons.play,
+              'color': _orange,
+            },
           ];
 
           return GridView.count(
@@ -185,7 +217,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         color: color.withOpacity(0.18),
                       ),
                       alignment: Alignment.center,
-                      child: Icon(s['icon'] as IconData, size: 14, color: color),
+                      child: Icon(
+                        s['icon'] as IconData,
+                        size: 14,
+                        color: color,
+                      ),
                     ),
                     const SizedBox(width: 10),
                     Expanded(
@@ -216,14 +252,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               );
             }).toList(),
           );
-        }
+        },
       ),
     );
   }
 
   Widget _buildSettingsSection() {
     final textColor = Theme.of(context).colorScheme.onBackground;
-    
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Consumer<SettingsProvider>(
@@ -245,18 +281,28 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
               ),
               _KCard(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 margin: const EdgeInsets.only(bottom: 8),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(
                       children: [
-                        Icon(LucideIcons.bell, size: 15, color: textColor.withOpacity(0.5)),
+                        Icon(
+                          LucideIcons.bell,
+                          size: 15,
+                          color: textColor.withOpacity(0.5),
+                        ),
                         const SizedBox(width: 10),
                         Text(
                           'Thông báo',
-                          style: GoogleFonts.inter(fontSize: 13, color: textColor),
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            color: textColor,
+                          ),
                         ),
                       ],
                     ),
@@ -300,11 +346,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   children: [
                     Row(
                       children: [
-                        Icon(LucideIcons.volume2, size: 15, color: textColor.withOpacity(0.5)),
+                        Icon(
+                          LucideIcons.volume2,
+                          size: 15,
+                          color: textColor.withOpacity(0.5),
+                        ),
                         const SizedBox(width: 10),
                         Text(
                           'Tốc độ TTS',
-                          style: GoogleFonts.inter(fontSize: 13, color: textColor),
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            color: textColor,
+                          ),
                         ),
                       ],
                     ),
@@ -320,14 +373,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               padding: const EdgeInsets.symmetric(vertical: 5),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(8),
-                                color: isSelected ? _teal : textColor.withOpacity(0.1),
+                                color: isSelected
+                                    ? _teal
+                                    : textColor.withOpacity(0.1),
                               ),
                               alignment: Alignment.center,
                               child: Text(
                                 s,
                                 style: GoogleFonts.jetBrainsMono(
                                   fontSize: 10,
-                                  color: isSelected ? Colors.black : textColor.withOpacity(0.5),
+                                  color: isSelected
+                                      ? Colors.black
+                                      : textColor.withOpacity(0.5),
                                 ),
                               ),
                             ),
@@ -340,17 +397,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
 
               _KCard(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Row(
                       children: [
-                        Icon(LucideIcons.moon, size: 15, color: textColor.withOpacity(0.5)),
+                        Icon(
+                          LucideIcons.moon,
+                          size: 15,
+                          color: textColor.withOpacity(0.5),
+                        ),
                         const SizedBox(width: 10),
                         Text(
                           'Giao diện tối',
-                          style: GoogleFonts.inter(fontSize: 13, color: textColor),
+                          style: GoogleFonts.inter(
+                            fontSize: 13,
+                            color: textColor,
+                          ),
                         ),
                       ],
                     ),
@@ -416,7 +483,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ],
           );
-        }
+        },
       ),
     );
   }
@@ -437,7 +504,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
           decoration: BoxDecoration(
             color: modalBg,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-            border: Border(top: BorderSide(color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05))),
+            border: Border(
+              top: BorderSide(
+                color: isDark
+                    ? Colors.white.withOpacity(0.1)
+                    : Colors.black.withOpacity(0.05),
+              ),
+            ),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -491,7 +564,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
                           color: textColor.withOpacity(0.1),
-                          border: Border.all(color: textColor.withOpacity(0.15)),
+                          border: Border.all(
+                            color: textColor.withOpacity(0.15),
+                          ),
                         ),
                         alignment: Alignment.center,
                         child: Text(
@@ -562,7 +637,11 @@ class _KCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Theme.of(context).brightness == Brightness.dark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.05)),
+        border: Border.all(
+          color: Theme.of(context).brightness == Brightness.dark
+              ? Colors.white.withOpacity(0.05)
+              : Colors.black.withOpacity(0.05),
+        ),
       ),
       child: child,
     );

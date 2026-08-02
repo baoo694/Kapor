@@ -22,6 +22,7 @@ public class ActivityTrackingService {
     private final LearningActivityEventRepository eventRepository;
     private final DailyActivityRepository dailyActivityRepository;
     private final StreakService streakService;
+    private final UserStatsService userStatsService;
 
     /**
      * Saves a learning event once and updates the per-day dashboard aggregate.
@@ -84,6 +85,7 @@ public class ActivityTrackingService {
         addMetric(activity.getMetrics(), Metric.ROLEPLAY, event.getRoleplayScore());
         dailyActivityRepository.save(activity);
 
+        userStatsService.addActivity(userId, event);
         streakService.updateStreakForUser(userId, localDate);
     }
 

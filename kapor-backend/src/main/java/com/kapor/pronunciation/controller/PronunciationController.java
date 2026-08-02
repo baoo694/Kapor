@@ -59,9 +59,13 @@ public class PronunciationController {
         PronunciationEvaluationDto result = pronunciationService.evaluate(
                 userId, exerciseId, sentenceIndex, audioFile.getBytes());
         try {
+            Integer speakingScore = result.getScores() == null
+                    ? null
+                    : result.getScores().getOverall();
             activityTrackingService.track(userId, ActivityTrackingService.ActivityUpdate.builder()
                     .eventKey("pronunciation-attempt:" + result.getAttemptId())
                     .type("pronunciation_attempt")
+                    .speakingScore(speakingScore)
                     .build(), timezoneOffsetMinutes);
         } catch (RuntimeException exception) {
             // The assessment is already saved; analytics must not turn it into a failed learner request.
