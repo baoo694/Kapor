@@ -11,10 +11,6 @@ services:
       MONGODB_URI: mongodb://mongo:27017/kapor
       REDIS_HOST: redis
       MINIO_ENDPOINT: http://minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minioadmin}
-      JWT_SECRET: ${JWT_SECRET}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       NLP_SERVICE_URL: http://kapor-nlp:8001
       WHISPERX_SERVICE_URL: http://kapor-nlp:8001
       WHISPER_SERVICE_URL: http://kapor-nlp:8001
