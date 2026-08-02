@@ -26,6 +26,11 @@ const totals = db.learning_activity_events.aggregate([
 
 let affected = 0;
 totals.forEach((row) => {
+  // Spring maps User.id to String in Java, while existing Mongo users may
+  // still store _id as ObjectId. Match the physical Mongo type here.
+  const userId = typeof row._id === 'string' && ObjectId.isValid(row._id)
+    ? new ObjectId(row._id)
+    : row._id;
   const stats = {
     totalStudyMinutes: row.totalStudyMinutes,
     totalCardsReviewed: row.totalCardsReviewed,
@@ -34,7 +39,10 @@ totals.forEach((row) => {
   };
   affected += 1;
   if (apply) {
-    db.users.updateOne({ _id: row._id }, { $set: { stats } });
+    const result = db.users.updateOne({ _id: userId }, { $set: { stats } });
+    if (result.matchedCount !== 1) {
+      throw new Error(`Không tìm thấy user ${row._id} để cập nhật stats`);
+    }
   } else {
     printjson({ userId: row._id, stats });
   }
