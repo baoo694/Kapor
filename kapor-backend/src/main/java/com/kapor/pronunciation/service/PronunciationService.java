@@ -3,11 +3,14 @@ package com.kapor.pronunciation.service;
 import com.kapor.common.exception.ResourceNotFoundException;
 import com.kapor.pronunciation.dto.PronunciationEvaluationDto;
 import com.kapor.pronunciation.dto.PronunciationAttemptDto;
+import com.kapor.pronunciation.exception.PronunciationAssessmentException;
 import com.kapor.pronunciation.model.PronunciationAttempt;
 import com.kapor.pronunciation.model.PronunciationExercise;
 import com.kapor.pronunciation.repository.PronunciationAttemptRepository;
 import com.kapor.pronunciation.repository.PronunciationExerciseRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 
@@ -17,6 +20,7 @@ import java.util.List;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PronunciationService {
     /** Azure PA REST evaluates short scripted recordings; leave one second of headroom. */
     private static final int MAX_RECORDING_SECONDS = 29;
@@ -55,13 +59,27 @@ public class PronunciationService {
         }
         byte[] wav = PcmWavConverter.toWav(pcm);
         Instant now = Instant.now();
-        String audioObjectKey = audioStorage.storeAttempt(userId, wav);
-        PronunciationAttempt attempt = attemptRepository.save(PronunciationAttempt.builder()
+        String audioObjectKey;
+        try {
+            audioObjectKey = audioStorage.storeAttempt(userId, wav);
+        } catch (RuntimeException exception) {
+            log.error("Could not store pronunciation recording for user {}", userId, exception);
+            throw new PronunciationAssessmentException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Không thể lưu bản ghi phát âm. Hãy kiểm tra MinIO rồi thử lại.", exception);
+        }
+        PronunciationAttempt attempt;
+        try {
+            attempt = attemptRepository.save(PronunciationAttempt.builder()
                 .userId(userId).exerciseId(exerciseId).sentenceIndex(sentenceIndex).status("processing")
                 .provider(assessmentProvider.name()).assessmentVersion("azure-pa-whisperx-v2")
                 .audioObjectKey(audioObjectKey).audioContentType("audio/wav")
                 .audioDurationMs(durationMs).userWaveform(waveform(pcm)).attemptedAt(now)
                 .expiresAt(now.plus(AUDIO_RETENTION)).build());
+        } catch (RuntimeException exception) {
+            log.error("Could not create pronunciation attempt for user {}", userId, exception);
+            throw new PronunciationAssessmentException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Không thể lưu phiên đánh giá phát âm. Hãy kiểm tra MongoDB rồi thử lại.", exception);
+        }
         try {
             String referenceText = exercise.getSentences().get(sentenceIndex).getText();
             PronunciationAssessmentProvider.Assessment assessment = assessmentProvider.assess(

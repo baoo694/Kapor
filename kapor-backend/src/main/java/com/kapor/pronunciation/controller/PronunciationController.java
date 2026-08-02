@@ -8,6 +8,7 @@ import com.kapor.pronunciation.model.PronunciationExercise;
 import com.kapor.pronunciation.service.PronunciationService;
 import com.kapor.analytics.service.ActivityTrackingService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -27,6 +28,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/pronunciation")
 @RequiredArgsConstructor
+@Slf4j
 public class PronunciationController {
     private final PronunciationService pronunciationService;
     private final ActivityTrackingService activityTrackingService;
@@ -56,10 +58,15 @@ public class PronunciationController {
         String userId = userId(authentication);
         PronunciationEvaluationDto result = pronunciationService.evaluate(
                 userId, exerciseId, sentenceIndex, audioFile.getBytes());
-        activityTrackingService.track(userId, ActivityTrackingService.ActivityUpdate.builder()
-                .eventKey("pronunciation-attempt:" + result.getAttemptId())
-                .type("pronunciation_attempt")
-                .build(), timezoneOffsetMinutes);
+        try {
+            activityTrackingService.track(userId, ActivityTrackingService.ActivityUpdate.builder()
+                    .eventKey("pronunciation-attempt:" + result.getAttemptId())
+                    .type("pronunciation_attempt")
+                    .build(), timezoneOffsetMinutes);
+        } catch (RuntimeException exception) {
+            // The assessment is already saved; analytics must not turn it into a failed learner request.
+            log.warn("Could not track pronunciation attempt {}", result.getAttemptId(), exception);
+        }
         return ResponseEntity.ok(ApiResponse.ok(result));
     }
 
