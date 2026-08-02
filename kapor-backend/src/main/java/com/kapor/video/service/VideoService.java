@@ -15,6 +15,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
@@ -34,6 +40,9 @@ public class VideoService {
 
     @Value("${gemini.subtitle-batch-size:12}")
     private int geminiSubtitleBatchSize;
+
+    @Value("${gemini.subtitle-max-concurrency:3}")
+    private int geminiSubtitleMaxConcurrency = 3;
 
     public List<VideoDto> getAllVideos() {
         return videoRepository.findAll().stream()
@@ -109,12 +118,16 @@ public class VideoService {
         validateKoreanSubtitles(korean);
         int batchSize = Math.max(1, geminiSubtitleBatchSize);
 
+        List<Callable<TokenizationBatch>> tasks = new ArrayList<>();
         for (int start = 0; start < korean.size(); start += batchSize) {
+            int batchStart = start;
             int end = Math.min(start + batchSize, korean.size());
-            List<Video.SubtitleLine> batch = korean.subList(start, end);
-            List<GeminiSubtitleService.TokenizationLine> tokenization = geminiSubtitleService.tokenize(batch);
-            for (GeminiSubtitleService.TokenizationLine result : tokenization) {
-                Video.SubtitleLine koreanLine = batch.get(result.index());
+            List<Video.SubtitleLine> batch = List.copyOf(korean.subList(start, end));
+            tasks.add(() -> new TokenizationBatch(batchStart, geminiSubtitleService.tokenize(batch)));
+        }
+        for (TokenizationBatch tokenizationBatch : executeSubtitleBatches(tasks)) {
+            for (GeminiSubtitleService.TokenizationLine result : tokenizationBatch.results()) {
+                Video.SubtitleLine koreanLine = korean.get(tokenizationBatch.startIndex() + result.index());
                 koreanLine.setTokens(result.tokens().stream()
                         .filter(token -> koreanLine.getText().contains(token.getSurface()))
                         .collect(Collectors.toList()));
@@ -132,9 +145,12 @@ public class VideoService {
         List<String> translationsByIndex = new ArrayList<>(Collections.nCopies(korean.size(), null));
         int batchSize = Math.max(1, geminiSubtitleBatchSize);
 
+        List<Callable<List<GeminiSubtitleService.TranslationLine>>> tasks = new ArrayList<>();
         for (List<GeminiSubtitleService.TranslationGroup> batch : translationBatches(
                 groupSubtitlesForTranslation(korean), batchSize)) {
-            List<GeminiSubtitleService.TranslationLine> translations = geminiSubtitleService.translateGrouped(batch);
+            tasks.add(() -> geminiSubtitleService.translateGrouped(batch));
+        }
+        for (List<GeminiSubtitleService.TranslationLine> translations : executeSubtitleBatches(tasks)) {
             for (GeminiSubtitleService.TranslationLine result : translations) {
                 if (result.index() < 0 || result.index() >= korean.size()
                         || translationsByIndex.set(result.index(), result.vietnamese()) != null) {
@@ -168,23 +184,38 @@ public class VideoService {
         List<Video.SubtitleLine> vietnamese = new java.util.ArrayList<>();
         int batchSize = Math.max(1, geminiSubtitleBatchSize);
 
+        List<Callable<AnalysisBatch>> tasks = new ArrayList<>();
         for (int start = 0; start < korean.size(); start += batchSize) {
+            int batchStart = start;
             int end = Math.min(start + batchSize, korean.size());
-            List<Video.SubtitleLine> batch = korean.subList(start, end);
-            List<GeminiSubtitleService.AnalysisLine> analysis = geminiSubtitleService.analyze(batch);
-            for (GeminiSubtitleService.AnalysisLine result : analysis) {
-                Video.SubtitleLine koreanLine = batch.get(result.index());
-                List<Video.TokenizedWord> verifiedTokens = result.tokens().stream()
-                        .filter(token -> koreanLine.getText().contains(token.getSurface()))
-                        .collect(Collectors.toList());
-                koreanLine.setTokens(verifiedTokens);
-                vietnamese.add(Video.SubtitleLine.builder()
-                        .start(koreanLine.getStart())
-                        .end(koreanLine.getEnd())
-                        .text(result.vietnamese())
-                        .tokens(List.of())
-                        .build());
+            List<Video.SubtitleLine> batch = List.copyOf(korean.subList(start, end));
+            tasks.add(() -> new AnalysisBatch(batchStart, geminiSubtitleService.analyze(batch)));
+        }
+        List<GeminiSubtitleService.AnalysisLine> analysisByIndex = new ArrayList<>(Collections.nCopies(korean.size(), null));
+        for (AnalysisBatch analysisBatch : executeSubtitleBatches(tasks)) {
+            for (GeminiSubtitleService.AnalysisLine result : analysisBatch.results()) {
+                int sourceIndex = analysisBatch.startIndex() + result.index();
+                if (sourceIndex < 0 || sourceIndex >= korean.size() || analysisByIndex.set(sourceIndex, result) != null) {
+                    throw new IllegalStateException("Gemini returned duplicate or invalid subtitle analysis");
+                }
             }
+        }
+        for (int index = 0; index < korean.size(); index++) {
+            GeminiSubtitleService.AnalysisLine result = analysisByIndex.get(index);
+            if (result == null) {
+                throw new IllegalStateException("Gemini did not return every subtitle analysis line");
+            }
+            Video.SubtitleLine koreanLine = korean.get(index);
+            List<Video.TokenizedWord> verifiedTokens = result.tokens().stream()
+                    .filter(token -> koreanLine.getText().contains(token.getSurface()))
+                    .collect(Collectors.toList());
+            koreanLine.setTokens(verifiedTokens);
+            vietnamese.add(Video.SubtitleLine.builder()
+                    .start(koreanLine.getStart())
+                    .end(koreanLine.getEnd())
+                    .text(result.vietnamese())
+                    .tokens(List.of())
+                    .build());
         }
 
         if (vietnamese.size() != korean.size()) {
@@ -302,6 +333,46 @@ public class VideoService {
         }
         return batches;
     }
+
+    /** Executes remote Gemini batches concurrently while bounding in-flight requests. */
+    private <T> List<T> executeSubtitleBatches(List<Callable<T>> tasks) {
+        if (tasks.isEmpty()) return List.of();
+        int concurrency = Math.max(1, geminiSubtitleMaxConcurrency);
+        try (ExecutorService executor = Executors.newFixedThreadPool(concurrency, Thread.ofVirtual()
+                .name("subtitle-gemini-", 0).factory())) {
+            ExecutorCompletionService<T> completionService = new ExecutorCompletionService<>(executor);
+            List<Future<T>> futures = new ArrayList<>();
+            for (Callable<T> task : tasks) {
+                futures.add(completionService.submit(task));
+            }
+
+            List<T> results = new ArrayList<>();
+            for (int completed = 0; completed < tasks.size(); completed++) {
+                try {
+                    results.add(completionService.take().get());
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    cancelAll(futures);
+                    throw new IllegalStateException("Interrupted while processing subtitle batches", exception);
+                } catch (ExecutionException exception) {
+                    cancelAll(futures);
+                    Throwable cause = exception.getCause();
+                    if (cause instanceof RuntimeException runtimeException) {
+                        throw runtimeException;
+                    }
+                    throw new IllegalStateException("Unable to process subtitle batches", cause);
+                }
+            }
+            return results;
+        }
+    }
+
+    private void cancelAll(List<? extends Future<?>> futures) {
+        futures.forEach(future -> future.cancel(true));
+    }
+
+    private record TokenizationBatch(int startIndex, List<GeminiSubtitleService.TokenizationLine> results) { }
+    private record AnalysisBatch(int startIndex, List<GeminiSubtitleService.AnalysisLine> results) { }
 
     private Video findVideo(String id) {
         return videoRepository.findById(id)

@@ -69,6 +69,7 @@ gemini:
   api-key: ${GEMINI_API_KEY:}
   model-name: ${GEMINI_MODEL:gemini-2.5-flash}
   subtitle-batch-size: 12
+  subtitle-max-concurrency: 3
   tts:
     model-name: ${GEMINI_TTS_MODEL:gemini-2.5-flash-preview-tts}
     voice-name: ${GEMINI_TTS_VOICE:Kore}

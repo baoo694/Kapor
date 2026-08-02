@@ -8,10 +8,14 @@ import com.kapor.video.dto.VideoDto;
 import com.kapor.video.model.Video;
 import com.kapor.video.repository.VideoRepository;
 import org.junit.jupiter.api.Test;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Proxy;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -179,6 +183,44 @@ class VideoServiceSubtitleTest {
 
         assertThat(result.getVietnameseSubtitles()).isEmpty();
         assertThat(result.getKoreanSubtitles().get(0).getTokens().get(0).getExampleKo()).isEqualTo("저는 개발자입니다.");
+    }
+
+    @Test
+    void runsThreeAiSubtitleBatchesConcurrently() {
+        CountDownLatch allBatchesStarted = new CountDownLatch(3);
+        AtomicInteger activeRequests = new AtomicInteger();
+        AtomicInteger peakRequests = new AtomicInteger();
+        GeminiSubtitleService ai = new GeminiSubtitleService(null, null) {
+            @Override
+            public List<TokenizationLine> tokenize(List<Video.SubtitleLine> subtitles) {
+                int active = activeRequests.incrementAndGet();
+                peakRequests.accumulateAndGet(active, Math::max);
+                try {
+                    allBatchesStarted.countDown();
+                    if (!allBatchesStarted.await(1, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("Batches were not started concurrently");
+                    }
+                    return List.of(new TokenizationLine(0, List.of(
+                            Video.TokenizedWord.builder().surface(subtitles.get(0).getText()).clickable(true).build())));
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(exception);
+                } finally {
+                    activeRequests.decrementAndGet();
+                }
+            }
+        };
+        VideoService service = serviceFor(Video.builder().id("video-1").build(), new AtomicReference<>(), ai);
+        ReflectionTestUtils.setField(service, "geminiSubtitleBatchSize", 1);
+        ReflectionTestUtils.setField(service, "geminiSubtitleMaxConcurrency", 3);
+        SubtitleTokenizeRequest request = new SubtitleTokenizeRequest();
+        request.setKoreanSubtitles(List.of(
+                line(0, 1, "첫째"), line(1, 2, "둘째"), line(2, 3, "셋째")
+        ));
+
+        service.tokenizeKoreanSubtitlesWithAi("video-1", request);
+
+        assertThat(peakRequests.get()).isEqualTo(3);
     }
 
     private VideoService serviceFor(Video video, AtomicReference<Video> saved) {

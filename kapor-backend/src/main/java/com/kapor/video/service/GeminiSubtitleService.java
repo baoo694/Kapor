@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.kapor.video.model.Video;
 import com.kapor.video.exception.GeminiApiException;
+import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -21,6 +22,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.Semaphore;
 
 /** Calls Gemini with a strict JSON schema for Korean subtitle translation and tokenization. */
 @Service
@@ -36,6 +38,16 @@ public class GeminiSubtitleService {
 
     @Value("${gemini.model-name:gemini-2.5-flash}")
     private String modelName;
+
+    @Value("${gemini.subtitle-max-concurrency:3}")
+    private int maxConcurrentSubtitleRequests = 3;
+
+    private volatile Semaphore subtitleRequestPermits = new Semaphore(3);
+
+    @PostConstruct
+    void configureSubtitleRequestPermits() {
+        subtitleRequestPermits = new Semaphore(Math.max(1, maxConcurrentSubtitleRequests));
+    }
 
     public List<AnalysisLine> analyze(List<Video.SubtitleLine> subtitles) {
         if (apiKey == null || apiKey.isBlank() || apiKey.startsWith("your-")) {
@@ -84,9 +96,11 @@ public class GeminiSubtitleService {
     }
 
     private JsonNode generate(JsonNode requestBody) {
-        JsonNode response;
+        boolean permitAcquired = false;
         try {
-            response = webClientBuilder.build().post()
+            subtitleRequestPermits.acquire();
+            permitAcquired = true;
+            return webClientBuilder.build().post()
                     .uri("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent", modelName)
                     .header("x-goog-api-key", apiKey)
                     .contentType(MediaType.APPLICATION_JSON)
@@ -94,15 +108,21 @@ public class GeminiSubtitleService {
                     .retrieve()
                     .onStatus(HttpStatusCode::isError, clientResponse -> clientResponse.bodyToMono(JsonNode.class)
                             .defaultIfEmpty(objectMapper.createObjectNode())
-                            .map(body -> geminiError(clientResponse.statusCode(), body)))
+                    .map(body -> geminiError(clientResponse.statusCode(), body)))
                     .bodyToMono(JsonNode.class)
                     .block(REQUEST_TIMEOUT);
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new GeminiApiException(HttpStatus.BAD_GATEWAY, "Subtitle processing was interrupted while waiting for Gemini.", exception);
         } catch (GeminiApiException exception) {
             throw exception;
         } catch (RuntimeException exception) {
             throw new GeminiApiException(HttpStatus.BAD_GATEWAY, "Unable to reach Gemini. Check the backend network connection and retry.", exception);
+        } finally {
+            if (permitAcquired) {
+                subtitleRequestPermits.release();
+            }
         }
-        return response;
     }
 
     private ObjectNode requestBody(List<Video.SubtitleLine> subtitles) {
