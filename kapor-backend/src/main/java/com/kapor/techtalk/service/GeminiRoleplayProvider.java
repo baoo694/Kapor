@@ -206,11 +206,45 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
         if (text.isBlank()) throw new RoleplayAiException(
                 "GEMINI_EMPTY_RESPONSE", "Gemini returned no structured roleplay result.", true);
         try {
-            return objectMapper.readTree(text);
+            return readStructuredJson(text);
         } catch (JsonProcessingException exception) {
             throw new RoleplayAiException(
                     "GEMINI_INVALID_RESPONSE", "Gemini returned malformed roleplay JSON.", true, exception);
         }
+    }
+
+    /**
+     * Gemini is asked for JSON, but some model versions still wrap a valid
+     * object in a Markdown fence or add a short preface. Accept that harmless
+     * formatting while retaining strict JSON parsing for the extracted object.
+     */
+    private JsonNode readStructuredJson(String responseText) throws JsonProcessingException {
+        String candidate = stripCodeFence(responseText);
+        try {
+            return objectMapper.readTree(candidate);
+        } catch (JsonProcessingException firstFailure) {
+            String extracted = extractJsonObject(candidate);
+            if (extracted == null) throw firstFailure;
+            log.warn("Gemini returned {} characters around a structured JSON response; extracting the object.",
+                    responseText.length());
+            return objectMapper.readTree(extracted);
+        }
+    }
+
+    private String stripCodeFence(String value) {
+        String candidate = value == null ? "" : value.strip();
+        if (!candidate.startsWith("```")) return candidate;
+        int firstLineEnd = candidate.indexOf('\n');
+        if (firstLineEnd < 0) return candidate;
+        candidate = candidate.substring(firstLineEnd + 1);
+        int closingFence = candidate.lastIndexOf("```");
+        return (closingFence < 0 ? candidate : candidate.substring(0, closingFence)).strip();
+    }
+
+    private String extractJsonObject(String value) {
+        int first = value.indexOf('{');
+        int last = value.lastIndexOf('}');
+        return first >= 0 && last > first ? value.substring(first, last + 1) : null;
     }
 
     private String candidateText(JsonNode response) {

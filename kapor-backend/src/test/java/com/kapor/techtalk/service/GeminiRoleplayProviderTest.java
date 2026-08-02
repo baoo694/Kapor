@@ -60,4 +60,15 @@ class GeminiRoleplayProviderTest {
                 .satisfies(objective -> assertThat(objective.isCompleted()).isTrue());
         assertThat(evaluation.getCompletionMessageKo()).isEqualTo("보고를 마쳤습니다.");
     }
+
+    @Test
+    void acceptsAJsonObjectWrappedInAMarkdownFence() throws Exception {
+        JsonNode response = objectMapper.readTree("""
+                {"candidates":[{"content":{"parts":[{"text":"```json\\n{\\"grammar\\":90}\\n```"}]}}]}
+                """);
+
+        JsonNode parsed = ReflectionTestUtils.invokeMethod(provider, "structuredCandidate", response);
+
+        assertThat(parsed.path("grammar").asInt()).isEqualTo(90);
+    }
 }
