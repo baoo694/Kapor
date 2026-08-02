@@ -57,6 +57,29 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _handleGoogleLogin() async {
+    setState(() => _err = '');
+    setState(() => _loading = true);
+
+    try {
+      final authProvider = context.read<AuthProvider>();
+      final didSignIn = await authProvider.loginWithGoogle();
+      if (!didSignIn || !mounted) return;
+
+      context.go(
+        authProvider.hasCompletedOnboarding ? '/dashboard' : '/onboarding',
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _err = e.toString());
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
   @override
   void dispose() {
     _emailController.dispose();
@@ -234,9 +257,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     GoogleAuthButton(
                       label: 'Đăng nhập với Google',
-                      onPressed: () {
-                        context.go('/dashboard');
-                      },
+                      onPressed: _handleGoogleLogin,
+                      isLoading: _loading,
                     ),
 
                     const SizedBox(height: 24),

@@ -16,4 +16,22 @@ class AppEnvironment {
 
     return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
   }
+
+  /// OAuth 2.0 Web client ID. This is an identifier, not a secret, and is
+  /// supplied to the Google native SDK so it issues an ID token for the API.
+  static String get googleServerClientId {
+    final value = dotenv.env['GOOGLE_SERVER_CLIENT_ID']?.trim();
+    if (value == null || value.isEmpty) {
+      throw StateError(
+        'GOOGLE_SERVER_CLIENT_ID is missing. Add the Web OAuth client ID to .env before using Google sign-in.',
+      );
+    }
+    if (!value.endsWith('.apps.googleusercontent.com')) {
+      throw StateError(
+        'GOOGLE_SERVER_CLIENT_ID không phải Google OAuth Web client ID hợp lệ.',
+      );
+    }
+
+    return value;
+  }
 }

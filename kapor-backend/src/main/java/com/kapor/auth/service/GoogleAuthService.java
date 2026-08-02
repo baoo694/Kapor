@@ -16,6 +16,10 @@ public class GoogleAuthService {
     private String clientId;
 
     public GoogleIdToken.Payload verifyToken(String idTokenString) {
+        if (clientId == null || !clientId.endsWith(".apps.googleusercontent.com")) {
+            throw new IllegalArgumentException(
+                    "GOOGLE_CLIENT_ID must be a Google OAuth Web client ID ending in .apps.googleusercontent.com");
+        }
         try {
             GoogleIdTokenVerifier verifier = new GoogleIdTokenVerifier.Builder(new NetHttpTransport(), new GsonFactory())
                     .setAudience(Collections.singletonList(clientId))

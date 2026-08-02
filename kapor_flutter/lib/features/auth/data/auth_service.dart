@@ -16,6 +16,17 @@ class AuthService {
     }
   }
 
+  Future<Map<String, dynamic>> loginWithGoogle(String idToken) async {
+    try {
+      final response = await _dio.post('/auth/google', data: {
+        'idToken': idToken,
+      });
+      return response.data;
+    } on DioException catch (e) {
+      throw _extractErrorMessage(e, 'Không thể đăng nhập với Google');
+    }
+  }
+
   Future<Map<String, dynamic>> register(String name, String email, String password) async {
     try {
       final response = await _dio.post('/auth/register', data: {

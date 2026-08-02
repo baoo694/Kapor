@@ -84,6 +84,29 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
   }
 
+  Future<void> _handleGoogleRegister() async {
+    setState(() => _err = '');
+    setState(() => _loading = true);
+
+    try {
+      final authProvider = context.read<AuthProvider>();
+      final didSignIn = await authProvider.loginWithGoogle();
+      if (!didSignIn || !mounted) return;
+
+      context.go(
+        authProvider.hasCompletedOnboarding ? '/dashboard' : '/onboarding',
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _err = e.toString());
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _loading = false);
+      }
+    }
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -341,9 +364,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                     GoogleAuthButton(
                       label: 'Đăng ký với Google',
-                      onPressed: () {
-                        context.go('/onboarding');
-                      },
+                      onPressed: _handleGoogleRegister,
+                      isLoading: _loading,
                     ),
 
                     const SizedBox(height: 24),
