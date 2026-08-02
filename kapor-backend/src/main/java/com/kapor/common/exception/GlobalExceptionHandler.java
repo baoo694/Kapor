@@ -8,6 +8,7 @@ import com.kapor.video.exception.GeminiApiException;
 import com.kapor.techtalk.service.RoleplayRateLimitException;
 import com.kapor.techtalk.service.RoleplayAiException;
 import com.kapor.summarizer.SummarizerRateLimitException;
+import com.kapor.summarizer.SummarizerNlpException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -99,6 +100,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleSummarizerRateLimit(SummarizerRateLimitException ex) {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .body(ApiResponse.error("SUMMARIZER_RATE_LIMITED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(SummarizerNlpException.class)
+    public ResponseEntity<ApiResponse<Void>> handleSummarizerNlp(SummarizerNlpException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(ApiResponse.error("SUMMARIZER_NLP_UNAVAILABLE", ex.getMessage()));
     }
 
     @ExceptionHandler(RoleplayAiException.class)

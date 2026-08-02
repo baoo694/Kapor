@@ -1,7 +1,7 @@
 from dataclasses import replace
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from threading import Lock
@@ -20,6 +20,8 @@ _whisper_lock = Lock()
 # WhisperX keeps decoding options on the cached model. Serialise only the
 # decoding step so each scripted exercise receives its own initial prompt.
 _whisper_inference_lock = Lock()
+_kiwi = None
+_kiwi_lock = Lock()
 WHISPERX_MODEL_NAME = os.getenv("WHISPERX_MODEL", os.getenv("WHISPER_MODEL", "small"))
 WHISPERX_DEVICE = os.getenv("WHISPERX_DEVICE", os.getenv("WHISPER_DEVICE", "cpu"))
 WHISPERX_COMPUTE_TYPE = os.getenv("WHISPERX_COMPUTE_TYPE", os.getenv("WHISPER_COMPUTE_TYPE", "int8"))
@@ -39,6 +41,28 @@ class WhisperTranscriptionResponse(BaseModel):
     text: str
     durationSeconds: float
     words: List[TranscribedWord]
+
+class KoreanCandidatesRequest(BaseModel):
+    text: str
+
+class KoreanCandidate(BaseModel):
+    lemma: str
+    surface: str
+    pos: str
+    count: int
+
+class KoreanCandidatesResponse(BaseModel):
+    candidates: List[KoreanCandidate]
+
+# Function words and generic words that do not make useful standalone cards.
+COMMON_LEMMAS = {
+    "것", "수", "등", "때", "곳", "이것", "그것", "저것", "우리", "너희", "자신",
+    "사람", "경우", "부분", "내용", "방법", "문제", "하나", "이번", "이후", "이전",
+    "이상", "이하", "관련", "대해", "통해", "위해", "때문", "가장", "더욱", "매우",
+    "정도", "모두", "다시", "여러", "다른", "같다", "있다", "없다", "되다", "하다",
+}
+
+CONTENT_TAGS = {"NNG", "NNB", "VV", "VA", "MAG"}
 
 @app.get("/health")
 def health_check():
@@ -74,6 +98,69 @@ def get_whisperx_models():
                     detail="WhisperX Korean models are unavailable. Check model download and runtime memory.",
                 ) from error
     return _whisperx_model, _whisperx_align_model, _whisperx_align_metadata
+
+def get_kiwi():
+    """Load the Korean morphological analyzer only when SmartSummarizer needs it."""
+    global _kiwi
+    if _kiwi is not None:
+        return _kiwi
+    with _kiwi_lock:
+        if _kiwi is None:
+            try:
+                from kiwipiepy import Kiwi
+                _kiwi = Kiwi()
+            except Exception as error:
+                logger.exception("Unable to load Kiwi Korean morphological analyzer")
+                raise HTTPException(
+                    status_code=503,
+                    detail="Korean vocabulary analyzer is unavailable.",
+                ) from error
+    return _kiwi
+
+@app.post("/korean/candidates", response_model=KoreanCandidatesResponse)
+def extract_korean_candidates(request: KoreanCandidatesRequest):
+    """Return unique learner-facing Korean lemmas without particles or names."""
+    text = " ".join(request.text.split())
+    if not text:
+        raise HTTPException(status_code=400, detail="Korean text is required")
+    if len(text) > 16000:
+        raise HTTPException(status_code=400, detail="Korean text is too long")
+
+    tokens = get_kiwi().tokenize(text)
+    candidates: Dict[str, KoreanCandidate] = {}
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        tag = token.tag
+        surface = token.form.strip()
+        lemma = None
+        pos = tag
+
+        # Noun + 하/XSV or 하/XSA becomes a dictionary-form verb/adjective:
+        # 배포/NNG + 하/XSV + ㅂ니다/EF -> 배포하다.
+        next_token = tokens[index + 1] if index + 1 < len(tokens) else None
+        if tag in {"NNG", "NNB"} and next_token is not None and next_token.tag in {"XSV", "XSA"} and next_token.form == "하":
+            lemma = surface + "하다"
+            pos = "VV" if next_token.tag == "XSV" else "VA"
+            index += 1
+        elif tag in {"VV", "VA"}:
+            lemma = surface + "다"
+        elif tag in CONTENT_TAGS:
+            lemma = surface
+
+        # NNP is intentionally omitted: it is normally a personal/place/product name,
+        # not a reusable vocabulary card. J*, E*, X*, and punctuation are excluded by tag.
+        if lemma and lemma not in COMMON_LEMMAS and any("가" <= char <= "힣" for char in lemma):
+            existing = candidates.get(lemma)
+            if existing is None:
+                candidates[lemma] = KoreanCandidate(lemma=lemma, surface=surface, pos=pos, count=1)
+            else:
+                candidates[lemma] = existing.model_copy(update={"count": existing.count + 1})
+        index += 1
+
+    return KoreanCandidatesResponse(candidates=sorted(
+        candidates.values(), key=lambda candidate: (-candidate.count, candidate.lemma)
+    ))
 
 @app.post("/pronunciation/transcribe", response_model=WhisperTranscriptionResponse)
 async def transcribe_korean_pronunciation(

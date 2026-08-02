@@ -47,6 +47,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /** Generates private MemByte flashcard drafts from public Korean IT material. */
 @Service
@@ -61,6 +62,7 @@ public class SummarizerService {
     private final ObjectMapper objectMapper;
     private final MembyteDeckRepository deckRepository;
     private final MembyteFlashcardRepository flashcardRepository;
+    private final KoreanCandidateExtractor koreanCandidateExtractor;
     private final Map<String, Deque<Instant>> generationTimes = new ConcurrentHashMap<>();
     private final HttpClient articleClient = HttpClient.newBuilder()
             .connectTimeout(ARTICLE_TIMEOUT)
@@ -84,8 +86,12 @@ public class SummarizerService {
         if (!HANGUL.matcher(source.text()).find()) {
             throw new IllegalArgumentException("Nguồn cần có nội dung tiếng Hàn để tạo flashcard.");
         }
+        List<KoreanCandidateExtractor.Candidate> candidates = koreanCandidateExtractor.extract(source.text());
+        if (candidates.isEmpty()) {
+            throw new IllegalArgumentException("Không tìm thấy từ vựng tiếng Hàn phù hợp trong nguồn.");
+        }
         enforceRateLimit(userId);
-        List<SummarizerCardDto> cards = parseCards(callGemini(source, maxCards), maxCards);
+        List<SummarizerCardDto> cards = parseCards(callGemini(source, candidates, maxCards), maxCards, candidates);
         if (cards.size() < 3) {
             throw new GeminiApiException(HttpStatus.BAD_GATEWAY,
                     "AI chưa tạo đủ thẻ hợp lệ. Vui lòng thử lại với bài viết chi tiết hơn.");
@@ -179,14 +185,14 @@ public class SummarizerService {
         }
     }
 
-    private JsonNode callGemini(SourceContent source, int maxCards) {
+    private JsonNode callGemini(SourceContent source, List<KoreanCandidateExtractor.Candidate> candidates, int maxCards) {
         if (apiKey == null || apiKey.isBlank() || apiKey.startsWith("your-")) {
             throw new GeminiApiException(HttpStatus.BAD_GATEWAY, "SmartSummarizer chưa được cấu hình trên máy chủ.");
         }
         try {
             ObjectNode request = objectMapper.createObjectNode();
             ArrayNode parts = request.putArray("contents").addObject().putArray("parts");
-            parts.addObject().put("text", prompt(source, maxCards));
+            parts.addObject().put("text", prompt(source, candidates, maxCards));
             ObjectNode config = request.putObject("generationConfig");
             config.put("temperature", 0.2);
             config.put("responseMimeType", "application/json");
@@ -204,16 +210,19 @@ public class SummarizerService {
         }
     }
 
-    private String prompt(SourceContent source, int maxCards) {
+    private String prompt(SourceContent source, List<KoreanCandidateExtractor.Candidate> candidates, int maxCards) {
+        String candidateTerms = candidates.stream()
+                .map(KoreanCandidateExtractor.Candidate::lemma)
+                .collect(Collectors.joining(", "));
         return """
-                You are a Korean IT vocabulary educator. Create %d useful, distinct flashcards from the source below.
-                Use only facts and vocabulary that appear in the source. Prefer Korean IT terms, compounds, verbs, and useful grammar; do not create generic filler cards.
-                Every korean field must contain Hangul and be a concise learner-facing headword. Provide natural Vietnamese and English meanings, Revised Romanization, a short English definition, a natural Korean example, and a source-grounded context. grammarNote may be empty when irrelevant.
+                You are a Korean IT vocabulary educator. Create %d useful, distinct flashcards from the candidate terms below.
+                Choose only terms from the candidate list; do not invent Korean headwords. Prefer Korean IT terms, compounds, verbs, and useful grammar; do not create generic filler cards.
+                Every korean field must contain Hangul and exactly match one candidate lemma. Provide natural Vietnamese and English meanings, Revised Romanization, a short English definition, and a natural Korean example. Write a concise context appropriate for the source title. grammarNote may be empty when irrelevant.
                 Do not use Markdown and do not add text outside the JSON schema.
                 Source title: %s
-                Source:
+                Candidate terms:
                 %s
-                """.formatted(maxCards, source.title(), source.text());
+                """.formatted(maxCards, source.title(), candidateTerms);
     }
 
     private ObjectNode cardSchema() {
@@ -227,7 +236,8 @@ public class SummarizerService {
         } catch (JsonProcessingException exception) { throw new IllegalStateException("Cannot build SmartSummarizer schema", exception); }
     }
 
-    private List<SummarizerCardDto> parseCards(JsonNode response, int maxCards) {
+    private List<SummarizerCardDto> parseCards(JsonNode response, int maxCards,
+                                                List<KoreanCandidateExtractor.Candidate> candidates) {
         JsonNode text = response == null ? null : response.path("candidates").path(0).path("content").path("parts").path(0).path("text");
         if (text == null || !text.isTextual()) throw new GeminiApiException(HttpStatus.BAD_GATEWAY, "AI không trả về flashcard hợp lệ.");
         try {
@@ -240,7 +250,13 @@ public class SummarizerService {
                     .definitionEn(trimTo(card.path("definitionEn").asText(), 800)).exampleKo(trimTo(card.path("exampleKo").asText(), 800))
                     .grammarNote(card.path("grammarNote").isNull() ? null : trimTo(card.path("grammarNote").asText(), 800))
                     .context(trimTo(card.path("context").asText(), 1200)).build());
-            return validateCards(parsed).stream().limit(maxCards).toList();
+            Set<String> allowedLemmas = candidates.stream()
+                    .map(KoreanCandidateExtractor.Candidate::lemma)
+                    .map(SummarizerService::normalize)
+                    .collect(Collectors.toSet());
+            return validateCards(parsed).stream()
+                    .filter(card -> allowedLemmas.contains(normalize(card.getKorean())))
+                    .limit(maxCards).toList();
         } catch (RuntimeException | JsonProcessingException exception) {
             throw new GeminiApiException(HttpStatus.BAD_GATEWAY, "AI trả về flashcard không hợp lệ. Vui lòng thử lại.", exception);
         }

@@ -9,3 +9,5 @@ whisperx==3.4.2
 ctranslate2==4.4.0
 python-multipart==0.0.20
 requests>=2.31,<3
+# Korean morphological analysis for SmartSummarizer candidate extraction.
+kiwipiepy>=0.20,<0.22

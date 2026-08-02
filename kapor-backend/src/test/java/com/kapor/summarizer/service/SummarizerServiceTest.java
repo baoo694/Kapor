@@ -38,7 +38,7 @@ class SummarizerServiceTest {
 
         @SuppressWarnings("unchecked")
         List<SummarizerCardDto> cards = (List<SummarizerCardDto>) ReflectionTestUtils.invokeMethod(
-                service, "parseCards", response, 8);
+                service, "parseCards", response, 8, candidates("배포", "서버", "코드"));
 
         assertThat(cards).extracting(SummarizerCardDto::getKorean)
                 .containsExactly("배포", "서버", "코드");
@@ -50,7 +50,8 @@ class SummarizerServiceTest {
         MembyteFlashcardRepository cards = mock(MembyteFlashcardRepository.class);
         MembyteDeck savedDeck = MembyteDeck.builder().id("deck-1").build();
         when(decks.save(any(MembyteDeck.class))).thenReturn(savedDeck);
-        SummarizerService service = new SummarizerService(WebClient.builder(), new ObjectMapper(), decks, cards);
+        SummarizerService service = new SummarizerService(WebClient.builder(), new ObjectMapper(), decks, cards,
+                candidateExtractor());
         ReflectionTestUtils.setField(service, "maxSourceCharacters", 12000);
         SummarizerSaveDeckRequest request = new SummarizerSaveDeckRequest();
         request.setSourceTitle("Korean deployment guide");
@@ -67,7 +68,18 @@ class SummarizerServiceTest {
     }
 
     private SummarizerService service() {
-        return new SummarizerService(WebClient.builder(), new ObjectMapper(), mock(MembyteDeckRepository.class), mock(MembyteFlashcardRepository.class));
+        return new SummarizerService(WebClient.builder(), new ObjectMapper(), mock(MembyteDeckRepository.class),
+                mock(MembyteFlashcardRepository.class), candidateExtractor());
+    }
+
+    private KoreanCandidateExtractor candidateExtractor() {
+        return new KoreanCandidateExtractor(WebClient.builder(), new ObjectMapper());
+    }
+
+    private List<KoreanCandidateExtractor.Candidate> candidates(String... lemmas) {
+        return java.util.Arrays.stream(lemmas)
+                .map(lemma -> new KoreanCandidateExtractor.Candidate(lemma, lemma, "NNG", 1))
+                .toList();
     }
 
     private SummarizerCardDto card(String korean, String vietnamese) {
