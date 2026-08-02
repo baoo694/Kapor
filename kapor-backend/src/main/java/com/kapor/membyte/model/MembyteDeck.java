@@ -27,6 +27,12 @@ public class MembyteDeck {
     private String lessonId;
     private String domain;
 
+    // Optional source metadata for decks created by SmartSummarizer.
+    private String sourceType;
+    private String sourceUrl;
+    private String sourceTitle;
+    private String sourceTextHash;
+
     // These are snapshots so a learner's deck remains understandable even if an admin edits a lesson later.
     private String title;
     private String titleVi;

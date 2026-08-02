@@ -183,10 +183,11 @@ class _FlashcardSummaryScreenState extends State<FlashcardSummaryScreen> {
               const SizedBox(height: 8),
               Center(
                 child: TextButton(
-                  onPressed: () => context.pushReplacement(
-                    '/devvocab-lesson/${widget.args.lesson.id}',
-                    extra: widget.args.lesson,
-                  ),
+                  // The lesson screen is still beneath this summary in the
+                  // navigation stack. Pop back to it instead of creating a
+                  // duplicate lesson route, so its back button returns to
+                  // the topic list.
+                  onPressed: () => context.pop(),
                   child: const Text('Quay lại bài học'),
                 ),
               ),

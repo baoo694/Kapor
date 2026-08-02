@@ -7,6 +7,7 @@ import com.kapor.pronunciation.exception.PronunciationAssessmentException;
 import com.kapor.video.exception.GeminiApiException;
 import com.kapor.techtalk.service.RoleplayRateLimitException;
 import com.kapor.techtalk.service.RoleplayAiException;
+import com.kapor.summarizer.SummarizerRateLimitException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -92,6 +93,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
                 .body(ApiResponse.error("TECHTALK_RATE_LIMITED", ex.getMessage()));
+    }
+
+    @ExceptionHandler(SummarizerRateLimitException.class)
+    public ResponseEntity<ApiResponse<Void>> handleSummarizerRateLimit(SummarizerRateLimitException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .body(ApiResponse.error("SUMMARIZER_RATE_LIMITED", ex.getMessage()));
     }
 
     @ExceptionHandler(RoleplayAiException.class)

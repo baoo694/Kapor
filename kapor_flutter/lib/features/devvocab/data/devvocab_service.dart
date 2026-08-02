@@ -254,6 +254,98 @@ class FlashcardProgress {
   }
 }
 
+class SummarizerCard {
+  final String korean;
+  final String pronunciation;
+  final String vietnamese;
+  final String english;
+  final String definitionEn;
+  final String exampleKo;
+  final String grammarNote;
+  final String context;
+
+  const SummarizerCard({
+    required this.korean,
+    required this.pronunciation,
+    required this.vietnamese,
+    required this.english,
+    required this.definitionEn,
+    required this.exampleKo,
+    required this.grammarNote,
+    required this.context,
+  });
+
+  factory SummarizerCard.fromJson(Map<String, dynamic> json) => SummarizerCard(
+    korean: json['korean']?.toString() ?? '',
+    pronunciation: json['pronunciation']?.toString() ?? '',
+    vietnamese: json['vietnamese']?.toString() ?? '',
+    english: json['english']?.toString() ?? '',
+    definitionEn: json['definitionEn']?.toString() ?? '',
+    exampleKo: json['exampleKo']?.toString() ?? '',
+    grammarNote: json['grammarNote']?.toString() ?? '',
+    context: json['context']?.toString() ?? '',
+  );
+
+  Map<String, dynamic> toJson() => {
+    'korean': korean,
+    'pronunciation': pronunciation,
+    'vietnamese': vietnamese,
+    'english': english,
+    'definitionEn': definitionEn,
+    'exampleKo': exampleKo,
+    'grammarNote': grammarNote,
+    'context': context,
+  };
+}
+
+class SummarizerPreview {
+  final String sourceType;
+  final String sourceUrl;
+  final String title;
+  final String sourceExcerpt;
+  final List<SummarizerCard> cards;
+
+  const SummarizerPreview({
+    required this.sourceType,
+    required this.sourceUrl,
+    required this.title,
+    required this.sourceExcerpt,
+    required this.cards,
+  });
+
+  factory SummarizerPreview.fromJson(Map<String, dynamic> json) {
+    final rawCards = json['cards'];
+    return SummarizerPreview(
+      sourceType: json['sourceType']?.toString() ?? 'TEXT',
+      sourceUrl: json['sourceUrl']?.toString() ?? '',
+      title: json['title']?.toString() ?? 'AI Summary',
+      sourceExcerpt: json['sourceExcerpt']?.toString() ?? '',
+      cards: rawCards is List
+          ? rawCards
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      SummarizerCard.fromJson(Map<String, dynamic>.from(item)),
+                )
+                .toList()
+          : const [],
+    );
+  }
+}
+
+class SummarizerSavedDeck {
+  final String deckId;
+  final int savedCards;
+
+  const SummarizerSavedDeck({required this.deckId, required this.savedCards});
+
+  factory SummarizerSavedDeck.fromJson(Map<String, dynamic> json) =>
+      SummarizerSavedDeck(
+        deckId: json['deckId']?.toString() ?? '',
+        savedCards: (json['savedCards'] as num?)?.toInt() ?? 0,
+      );
+}
+
 class DevVocabService {
   final Dio _dio = ApiClient().dio;
 
@@ -398,6 +490,46 @@ class DevVocabService {
     } on DioException catch (error) {
       throw Exception(
         _messageFromError(error, 'Không thể đặt lại trạng thái thẻ.'),
+      );
+    }
+  }
+
+  Future<SummarizerPreview> generateFlashcards(String input) async {
+    try {
+      final response = await _dio.post(
+        '/summarizer/generate',
+        data: {'input': input, 'maxCards': 8},
+      );
+      return SummarizerPreview.fromJson(
+        _responseData(response.data, 'Không thể tạo flashcard.'),
+      );
+    } on DioException catch (error) {
+      throw Exception(_messageFromError(error, 'Không thể tạo flashcard.'));
+    }
+  }
+
+  Future<SummarizerSavedDeck> saveSummarizerDeck({
+    required SummarizerPreview preview,
+    required String title,
+    required List<SummarizerCard> cards,
+  }) async {
+    try {
+      final response = await _dio.post(
+        '/summarizer/decks',
+        data: {
+          'title': title,
+          'sourceUrl': preview.sourceUrl,
+          'sourceTitle': preview.title,
+          'sourceExcerpt': preview.sourceExcerpt,
+          'cards': cards.map((card) => card.toJson()).toList(),
+        },
+      );
+      return SummarizerSavedDeck.fromJson(
+        _responseData(response.data, 'Không thể lưu deck flashcard.'),
+      );
+    } on DioException catch (error) {
+      throw Exception(
+        _messageFromError(error, 'Không thể lưu deck flashcard.'),
       );
     }
   }

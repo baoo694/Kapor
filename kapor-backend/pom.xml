@@ -112,6 +112,13 @@
             <version>${minio.version}</version>
         </dependency>
 
+        <!-- Safe, server-side extraction of public article text for SmartSummarizer. -->
+        <dependency>
+            <groupId>org.jsoup</groupId>
+            <artifactId>jsoup</artifactId>
+            <version>1.18.3</version>
+        </dependency>
+
         <!-- Lombok -->
         <dependency>
             <groupId>org.projectlombok</groupId>

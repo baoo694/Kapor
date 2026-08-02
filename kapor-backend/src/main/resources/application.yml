@@ -76,6 +76,11 @@ gemini:
     prompt-version: ${GEMINI_TTS_PROMPT_VERSION:v1}
     max-cache-misses-per-minute: ${GEMINI_TTS_MAX_CACHE_MISSES_PER_MINUTE:12}
 
+summarizer:
+  model-name: ${GEMINI_SUMMARIZER_MODEL:${GEMINI_MODEL:gemini-2.5-flash}}
+  max-generations-per-hour: ${SUMMARIZER_MAX_GENERATIONS_PER_HOUR:10}
+  max-source-characters: ${SUMMARIZER_MAX_SOURCE_CHARACTERS:12000}
+
 # TechTalk AI
 techtalk:
   seed-default-content: ${TECHTALK_SEED_DEFAULT_CONTENT:true}
