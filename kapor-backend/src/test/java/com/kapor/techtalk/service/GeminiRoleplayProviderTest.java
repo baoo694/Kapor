@@ -8,6 +8,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class GeminiRoleplayProviderTest {
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -70,5 +71,17 @@ class GeminiRoleplayProviderTest {
         JsonNode parsed = ReflectionTestUtils.invokeMethod(provider, "structuredCandidate", response);
 
         assertThat(parsed.path("grammar").asInt()).isEqualTo(90);
+    }
+
+    @Test
+    void reportsWhenGeminiTruncatesAStructuredResponse() throws Exception {
+        JsonNode response = objectMapper.readTree("""
+                {"candidates":[{"finishReason":"MAX_TOKENS","content":{"parts":[{"text":"{\\"grammar\\":90"}]}}]}
+                """);
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(provider, "structuredCandidate", response))
+                .isInstanceOfSatisfying(RoleplayAiException.class,
+                        error -> assertThat(error.getCode()).isEqualTo("GEMINI_RESPONSE_TRUNCATED"))
+                .hasMessage("Gemini truncated the structured evaluation before it was complete.");
     }
 }

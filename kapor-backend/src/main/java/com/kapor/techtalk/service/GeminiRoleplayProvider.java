@@ -54,6 +54,9 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
     @Value("${techtalk.ai.final-transcript-max-characters:30000}")
     private int finalTranscriptMaxCharacters;
 
+    @Value("${techtalk.ai.evaluation-max-output-tokens:2048}")
+    private int evaluationMaxOutputTokens;
+
     @Override
     public Flux<String> streamReply(RoleplayContext context) {
         if (!configured()) return Flux.error(notConfigured());
@@ -99,6 +102,8 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
                 If every objective is completed, completionMessageKo must be one natural, concise, in-character
                 Korean sentence that acknowledges completion and closes the scenario. Otherwise it must be an empty
                 string. The closing sentence must be plain text without Markdown, asterisks, headings, or bullets.
+                Return at most 3 corrections. Keep feedbackVi under 240 characters, each correction note under
+                100 characters, and objective evidence under 120 characters.
 
                 Learner message:
                 %s
@@ -125,7 +130,8 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
                 Evaluate whether the learner completed the workplace mission objectives. Base the taskCompletion
                 score only on evidence in the transcript. Return concise feedback in Korean and Vietnamese and
                 2-4 actionable improvement areas in Vietnamese. Each objective result must quote brief evidence,
-                or explain that no evidence was present.
+                or explain that no evidence was present. Keep feedback under 240 characters, each improvement and
+                objective evidence under 120 characters.
 
                 Scenario:
                 %s
@@ -182,7 +188,7 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
                 .putArray("parts").addObject().put("text", prompt);
         ObjectNode config = root.putObject("generationConfig");
         config.put("temperature", 0.15);
-        config.put("maxOutputTokens", 1024);
+        config.put("maxOutputTokens", Math.max(512, Math.min(4096, evaluationMaxOutputTokens)));
         config.put("responseMimeType", "application/json");
         config.set("responseJsonSchema", schema);
         return webClientBuilder.build().post()
@@ -202,12 +208,20 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
     }
 
     private JsonNode structuredCandidate(JsonNode response) {
+        String finishReason = response.path("candidates").path(0).path("finishReason").asText("");
+        if ("MAX_TOKENS".equalsIgnoreCase(finishReason)) {
+            throw new RoleplayAiException("GEMINI_RESPONSE_TRUNCATED",
+                    "Gemini truncated the structured evaluation before it was complete.", false);
+        }
         String text = candidateText(response);
         if (text.isBlank()) throw new RoleplayAiException(
                 "GEMINI_EMPTY_RESPONSE", "Gemini returned no structured roleplay result.", true);
         try {
             return readStructuredJson(text);
         } catch (JsonProcessingException exception) {
+            long offset = exception.getLocation() == null ? -1 : exception.getLocation().getCharOffset();
+            log.warn("Gemini structured JSON parsing failed [characters={}, finishReason={}, offset={}]",
+                    text.length(), finishReason, offset);
             throw new RoleplayAiException(
                     "GEMINI_INVALID_RESPONSE", "Gemini returned malformed roleplay JSON.", true, exception);
         }
@@ -353,12 +367,12 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
                   "vocabulary":{"type":"integer","minimum":0,"maximum":100},
                   "politeness":{"type":"integer","minimum":0,"maximum":100},
                   "feedbackVi":{"type":"string"},
-                  "usedRequiredVocabulary":{"type":"array","items":{"type":"string"}},
+                  "usedRequiredVocabulary":{"type":"array","maxItems":6,"items":{"type":"string"}},
                   "completionMessageKo":{"type":"string"},
-                  "objectives":{"type":"array","items":{"type":"object","properties":{
+                  "objectives":{"type":"array","maxItems":10,"items":{"type":"object","properties":{
                     "objective":{"type":"string"},"completed":{"type":"boolean"},"evidence":{"type":"string"}
                   },"required":["objective","completed","evidence"]}},
-                  "corrections":{"type":"array","items":{"type":"object","properties":{
+                  "corrections":{"type":"array","maxItems":3,"items":{"type":"object","properties":{
                     "original":{"type":"string"},"suggestion":{"type":"string"},
                     "type":{"type":"string","enum":["particle","honorific","vocabulary","grammar","verb_ending","pronoun","formality"]},
                     "noteVi":{"type":"string"}
@@ -373,8 +387,8 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
                 {"type":"object","properties":{
                   "taskCompletion":{"type":"integer","minimum":0,"maximum":100},
                   "feedback":{"type":"string"},"feedbackVi":{"type":"string"},
-                  "improvementAreas":{"type":"array","items":{"type":"string"}},
-                  "objectives":{"type":"array","items":{"type":"object","properties":{
+                  "improvementAreas":{"type":"array","maxItems":4,"items":{"type":"string"}},
+                  "objectives":{"type":"array","maxItems":10,"items":{"type":"object","properties":{
                     "objective":{"type":"string"},"completed":{"type":"boolean"},"evidence":{"type":"string"}
                   },"required":["objective","completed","evidence"]}}
                 },"required":["taskCompletion","feedback","feedbackVi","improvementAreas","objectives"]}

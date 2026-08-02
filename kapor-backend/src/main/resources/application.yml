@@ -90,6 +90,7 @@ techtalk:
     request-timeout-seconds: ${TECHTALK_AI_REQUEST_TIMEOUT_SECONDS:45}
     final-evaluation-timeout-seconds: ${TECHTALK_AI_FINAL_EVALUATION_TIMEOUT_SECONDS:100}
     final-transcript-max-characters: ${TECHTALK_AI_FINAL_TRANSCRIPT_MAX_CHARACTERS:30000}
+    evaluation-max-output-tokens: ${TECHTALK_AI_EVALUATION_MAX_OUTPUT_TOKENS:2048}
   quota:
     turns-per-minute: ${TECHTALK_TURNS_PER_MINUTE:5}
     turns-per-day: ${TECHTALK_TURNS_PER_DAY:100}
