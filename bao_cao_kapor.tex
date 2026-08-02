@@ -1,0 +1,328 @@
+\documentclass[12pt,a4paper]{report}
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setmainlanguage{vietnamese}
+\setmainfont{TeX Gyre Termes}
+\usepackage{geometry}
+\geometry{left=3.2cm,right=2.2cm,top=2.5cm,bottom=2.5cm}
+\usepackage{setspace}
+\onehalfspacing
+\usepackage{booktabs,longtable,array,tabularx}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{fancyhdr}
+\hypersetup{colorlinks=true,linkcolor=blue,urlcolor=blue,citecolor=blue}
+\lstset{basicstyle=\ttfamily\small,breaklines=true,frame=single,columns=fullflexible}
+\newcommand{\code}[1]{\texttt{\detokenize{#1}}}
+\newcommand{\evidence}[1]{\textit{Căn cứ: \code{#1}.}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+\pagestyle{fancy}\fancyhf{}\fancyhead[R]{Báo cáo đồ án Kapor}\fancyfoot[C]{\thepage}
+
+\begin{document}
+\begin{titlepage}
+\centering
+\vspace*{1.2cm}
+{\Large \textbf{BÁO CÁO ĐỒ ÁN TỐT NGHIỆP}}\\[1.2cm]
+{\Huge \textbf{KAPOR}}\\[0.4cm]
+{\Large Nền tảng học giao tiếp tiếng Hàn chuyên ngành Công nghệ thông tin}\par
+\vfill
+{\large Báo cáo kỹ thuật dựa trên mã nguồn dự án}\par
+\vspace{1.5cm}
+{\large 2026}
+\end{titlepage}
+
+\pagenumbering{roman}
+\chapter*{Tóm tắt đồ án tốt nghiệp}
+Kapor là hệ thống hỗ trợ người học tiếng Hàn trong bối cảnh công nghệ thông tin, gồm ứng dụng di động Flutter, Admin Panel React và backend Spring Boot. Backend tổ chức theo miền nghiệp vụ và cung cấp các phân hệ DevVocab, DevAnalytics, Video, MemByte, TechTalk, Pronunciation, Honorifics, TTS và quản trị. Hệ thống sử dụng MongoDB cho dữ liệu dạng document, Redis cho cache/giới hạn tốc độ, MinIO cho tệp âm thanh và một dịch vụ FastAPI chạy WhisperX cho nhận dạng, căn chỉnh tiếng Hàn và trích xuất ứng viên từ vựng.
+
+Đồ án tập trung vào khả năng kết hợp nội dung học có cấu trúc với các dịch vụ AI. Người học có thể học theo lộ trình, xem video có phụ đề song ngữ, lưu từ vào MemByte, ôn tập bằng FSRS, hội thoại nhập vai, luyện phát âm và phân tích kính ngữ. Quản trị viên có thể quản lý học liệu, kịch bản, prompt, người dùng và số liệu tổng quan. Mã nguồn hiện có bộ kiểm thử backend theo lớp controller/service và một số kiểm thử Flutter. Chưa có bằng chứng về một chiến dịch kiểm thử hiệu năng định lượng; vì vậy các chỉ số RPS, latency và error rate không được suy diễn trong báo cáo này.
+
+\chapter*{Lời cam đoan}
+Nội dung báo cáo được tổng hợp từ mã nguồn, tệp cấu hình, tài liệu yêu cầu và bộ kiểm thử có trong thư mục dự án Kapor tại thời điểm khảo sát. Những nội dung chưa có bằng chứng trực tiếp được ghi rõ là giới hạn hoặc hướng phát triển, không được trình bày như chức năng đã hoàn thiện.
+
+\chapter*{Lời cảm ơn}
+Xin trân trọng cảm ơn giảng viên hướng dẫn và các cá nhân đã hỗ trợ trong quá trình phân tích yêu cầu, thiết kế, triển khai và kiểm thử hệ thống.
+
+\chapter*{Danh mục thuật ngữ và từ viết tắt}
+\begin{longtable}{p{0.22\textwidth}p{0.70\textwidth}}
+\toprule
+Thuật ngữ & Diễn giải\\\midrule
+AI & Trí tuệ nhân tạo (Artificial Intelligence)\\
+API & Giao diện lập trình ứng dụng\\
+JWT & JSON Web Token\\
+NLP & Xử lý ngôn ngữ tự nhiên\\
+FSRS & Free Spaced Repetition Scheduler\\
+SRS & Hệ thống lặp lại ngắt quãng\\
+SSE & Server-Sent Events\\
+TTS & Text-to-Speech\\
+ASR & Automatic Speech Recognition\\
+CRUD & Create, Read, Update, Delete\\
+DAU/MAU & Người dùng hoạt động ngày/tháng\\
+\bottomrule
+\end{longtable}
+
+\tableofcontents\listoffigures\listoftables
+
+\chapter{Tổng quan đề tài}
+\section{Lý do chọn đề tài}
+Tiếng Hàn trong môi trường CNTT không chỉ yêu cầu vốn từ phổ thông mà còn đòi hỏi thuật ngữ kỹ thuật, giao tiếp công sở, kính ngữ và khả năng phản hồi bằng lời nói. Các luồng học này có đặc điểm khác nhau: từ vựng cần lặp lại có lịch, video cần đồng bộ phụ đề, phát âm cần đánh giá âm thanh, còn hội thoại cần duy trì ngữ cảnh. Kapor được xây dựng để gom các luồng trên trong một nền tảng thống nhất.
+
+\section{Mục tiêu đề tài}
+Mục tiêu là xây dựng hệ thống gồm: (i) ứng dụng người học đa nền tảng bằng Flutter; (ii) backend REST có xác thực và phân quyền; (iii) cổng quản trị nội dung; (iv) các dịch vụ AI cho hội thoại, TTS, phụ đề, phát âm và phân tích kính ngữ; (v) cơ chế SRS FSRS cho thẻ ghi nhớ; và (vi) cấu hình container để chạy API, NLP, MongoDB, Redis và MinIO.
+
+\section{Đối tượng và phạm vi thực hiện}
+Đối tượng là người học tiếng Hàn chuyên ngành CNTT và quản trị viên nội dung. Phạm vi mã nguồn gồm \code{kapor-backend}, \code{kapor_flutter}, \code{kapor-admin}, dịch vụ \code{kapor-nlp}, các tệp Docker Compose, tài liệu yêu cầu và test. Không có trong phạm vi bằng chứng: số liệu người dùng thật, đo tải sản xuất, đánh giá người dùng quy mô lớn và quy trình phát hành ứng dụng lên kho thương mại.
+
+\section{Phương pháp thực hiện}
+Đồ án sử dụng phân tích mã nguồn theo domain, đối chiếu controller--service--repository--model, kiểm tra cấu hình triển khai và đọc test. Yêu cầu chức năng được định danh FR-01 đến FR-29 trong tài liệu phân tích yêu cầu; mỗi nhóm được liên hệ với endpoint và test tương ứng khi có bằng chứng.
+
+\section{Bố cục đồ án}
+Chương 1 giới thiệu đề tài; Chương 2 trình bày nền tảng; Chương 3 phân tích yêu cầu; Chương 4 thiết kế; Chương 5 triển khai và kiểm thử; Chương 6 kết luận và hướng phát triển.
+
+\chapter{Cơ sở lý thuyết và công nghệ sử dụng}
+\section{Nền tảng phát triển ứng dụng di động và Admin Panel}
+Ứng dụng di động dùng Flutter/Dart, Provider cho trạng thái, go\_router cho điều hướng, Dio cho HTTP, youtube\_player\_iframe cho video, record cho ghi âm và just\_audio cho phát âm thanh. Admin Panel dùng React 19, TypeScript, Vite, React Router, Recharts và lucide-react. Lựa chọn này phù hợp với yêu cầu dùng chung codebase di động và giao diện quản trị web có bảng, biểu đồ và biểu mẫu.
+
+\section{Backend Spring Boot và Java 21}
+Backend dùng Spring Boot 3.4.13, Java 21, Spring Web/WebFlux, Validation, Actuator và Security. Mã nguồn áp dụng phân lớp controller, service, repository, DTO và xử lý lỗi tập trung. Java 21 hỗ trợ virtual threads được cấu hình trong dự án để phù hợp các tác vụ I/O như gọi AI/NLP; tuy nhiên hiệu năng thực tế cần được đo riêng.
+
+\section{MongoDB và Redis}
+MongoDB được chọn vì dữ liệu học liệu, phụ đề có token, phiên hội thoại và kết quả đánh giá có cấu trúc lồng nhau, thay đổi theo miền. Redis được khai báo làm cache và lưu dữ liệu giới hạn tốc độ; Compose cấu hình AOF, giới hạn 512 MB và chính sách \code{allkeys-lru}. Các collection chính gồm \code{users}, \code{topics}, \code{lessons}, \code{videos}, \code{membyte_decks}, \code{membyte_flashcards}, \code{roleplay_sessions}, \code{pronunciation_attempts}, \code{daily_activities} và \code{admin_prompts}.
+
+\section{Kiến trúc AI và NLP}
+LangChain4j và Gemini được dùng cho điều phối AI, hội thoại, TTS, giải thích phát âm và xử lý phụ đề. FastAPI \code{kapor-nlp} cung cấp WhisperX cho transcript và word timing tiếng Hàn, đồng thời dùng Kiwi để trích xuất lemma ứng viên. Backend gọi dịch vụ qua \code{NLP_SERVICE_URL}/\code{WHISPERX_SERVICE_URL}; model được cache trong volume Docker và có cơ chế khóa khi tải/inference.
+
+\section{Cơ sở lý thuyết và khái niệm chuyên môn}
+SRS lên lịch ôn tập dựa trên khả năng nhớ; JWT mang thông tin xác thực không trạng thái; SSE truyền phản hồi hội thoại theo dòng; TTS chuyển văn bản thành âm thanh; ASR chuyển âm thanh thành văn bản; forced alignment gắn mốc thời gian cho từ. Trong hệ thống, Azure cung cấp điểm đánh giá phát âm, WhisperX cung cấp transcript/timeline, còn Gemini tạo giải thích tiếng Việt.
+
+\section{Quy trình phát triển phần mềm áp dụng}
+Quy trình thể hiện qua tài liệu kế hoạch, chia domain, triển khai từng lớp, viết test và đóng gói Docker. Workflow CI backend thực hiện \code{mvn verify} và xây image khi thay đổi phù hợp. Đây là quy trình lặp theo tính năng, trong đó yêu cầu được đối chiếu với endpoint và kiểm thử.
+
+\chapter{Phân tích yêu cầu hệ thống}
+\section{Phát biểu bài toán}
+Người học cần một môi trường luyện tiếng Hàn CNTT có ngữ cảnh và phản hồi tức thời, trong khi quản trị viên cần công cụ tạo và hiệu chỉnh nội dung. Bài toán kỹ thuật là phối hợp dữ liệu học tập, dịch vụ AI có độ trễ và tài nguyên nặng, lưu lịch sử cá nhân, đồng thời bảo vệ tài khoản.
+
+\section{Xác định tác nhân}
+Hai tác nhân chính là Người học và Quản trị viên. Các hệ thống ngoài gồm Gemini, Google OAuth, Azure Speech, WhisperX/NLP, MinIO và SMTP. Các hệ thống ngoài không trực tiếp điều khiển nghiệp vụ nhưng cung cấp dịch vụ được backend gọi.
+
+\section{Phân tích yêu cầu chức năng}
+\begin{longtable}{p{0.12\textwidth}p{0.27\textwidth}p{0.49\textwidth}}
+\caption{Tổng hợp yêu cầu chức năng}\label{tab:fr}\\
+\toprule ID & Phân hệ & Nội dung chính\\\midrule
+FR-01 & Xác thực & Đăng ký, đăng nhập, Google, refresh JWT, OTP đặt lại mật khẩu.\\
+FR-02--04 & DevAnalytics & Dashboard, streak, gợi ý hoạt động.\\
+FR-05--08 & DevVocab & Lọc topic, skill tree, lesson, study/quiz/matching.\\
+FR-09--11 & Video & Video YouTube, phụ đề song ngữ, token, quiz và lưu thẻ.\\
+FR-12--14 & MemByte & Deck, thẻ, ôn FSRS, mặt sau và TTS.\\
+FR-15--18 & TechTalk & Scenario, nhắn tin SSE, audio/hint, kết quả và lịch sử.\\
+FR-19--21 & Pronunciation & Ghi âm, đánh giá, lịch sử và phát lại.\\
+FR-22--24 & Honorifics & Phân tích, chuẩn hóa, chi tiết sửa và sao chép.\\
+FR-25--29 & Admin & CRUD nội dung, subtitle, scenario/prompt, user và analytics.\\
+\bottomrule
+\end{longtable}
+
+\subsection{DevAnalytics}
+\code{AnalyticsController} cung cấp \code{/api/analytics/dashboard}; các service Analytics, ActivityTracking, Streak và Recommendation tổng hợp hoạt động, streak và đề xuất.\newline
+\subsection{DevVocab}
+\code{TopicController} và \code{LessonController} hỗ trợ duyệt topic/lesson, tiến độ study, quiz, matching và flashcard progress. Skill tree kiểm tra \code{prerequisiteTopicIds}.
+\subsection{Video Player}
+\code{VideoController} cung cấp danh sách, chi tiết, subtitle, quiz và answer; model \code{Video} lưu subtitle line, token và quiz marker lồng nhau.
+\subsection{MemByte}
+\code{MembyteController} quản lý lưu thẻ, deck, summary, cards và rate; unique index chống tạo trùng thẻ theo người dùng--bài học--từ vựng.
+\subsection{TechTalk AI}
+\code{RoleplayController} có start, send, stream SSE, hint, end, abandon, history và transcribe audio. \code{RoleplaySession} lưu status, message, turn, objective progress và snapshot prompt.
+\subsection{Pronunciation Lab}
+\code{PronunciationController} nhận multipart WAV, gọi pipeline Azure/WhisperX/Gemini, lưu attempt và cung cấp audio lịch sử. Strategy được thể hiện qua \code{PronunciationAssessmentProvider}.
+\subsection{Honorifics Analyzer}
+\code{HonorificsController} cung cấp \code{/analyze} và \code{/transform}; service kết hợp rule-based với Gemini cho trường hợp cần AI.
+\subsection{Admin Panel}
+Các controller \code{/api/admin/**} quản lý topic, lesson, video, subtitle, scenario, pronunciation exercise, prompt, user, admin và dashboard. SecurityConfig yêu cầu ROLE\_ADMIN cho toàn bộ namespace này.
+
+\section{Yêu cầu phi chức năng}
+\begin{longtable}{p{0.13\textwidth}p{0.28\textwidth}p{0.47\textwidth}}
+\caption{Yêu cầu phi chức năng}\label{tab:nfr}\\\toprule
+ID & Nhóm & Bằng chứng triển khai\\\midrule
+NFR-01 & Bảo mật & BCrypt, JWT, stateless session, ROLE\_ADMIN.\\
+NFR-02 & Tin cậy & GlobalExceptionHandler, ApiResponse, health check.\\
+NFR-03 & Mở rộng & NLP tách container; MinIO/Redis/MongoDB có volume.\\
+NFR-04 & Bảo trì & Domain package, DTO, repository và test tự động.\\
+NFR-05 & Triển khai & Docker Compose, Dockerfile Java/NLP, CI.\\
+NFR-06 & Sử dụng & Flutter, Provider, go\_router, các thành phần audio chung.\\
+\bottomrule
+\end{longtable}
+
+\section{Biểu đồ Use Case tổng quát hệ thống}
+Use Case tổng quát gồm Người học nối với xác thực, dashboard, lộ trình, video, MemByte, TechTalk, Pronunciation và Honorifics; Quản trị viên nối với CRUD nội dung, prompt, người dùng và thống kê. Các dịch vụ AI là tác nhân phụ trợ của các Use Case hội thoại, phát âm, TTS và phụ đề.
+
+\section{Đặc tả Use Case chính}
+\begin{longtable}{p{0.16\textwidth}p{0.29\textwidth}p{0.42\textwidth}}
+\caption{Đặc tả rút gọn Use Case}\toprule
+Use Case & Luồng chính & Ngoại lệ\\\midrule
+Đăng nhập & Gửi email/mật khẩu, xác thực, trả access/refresh. & Sai thông tin: 401; token hỏng/hết hạn: refresh hoặc 401.\\
+Ôn thẻ & Lấy thẻ đến hạn, người học chọn rating, FSRS cập nhật. & Thẻ không tồn tại hoặc rating không hợp lệ: lỗi validation; retry không tạo trùng nhờ unique index.\\
+Roleplay & Start session, gửi tin nhắn, nhận SSE, end và tính điểm. & AI/NLP timeout: trả lỗi dịch vụ, phiên vẫn được lưu theo trạng thái hiện tại.\\
+Đánh giá phát âm & Upload WAV, preflight/transcribe/score, lưu attempt. & Sai media type hoặc NLP/Azure lỗi: 400/502/assessment exception.\\
+Quản trị nội dung & Admin đăng nhập, CRUD và publish prompt. & Không đủ role: 403; tài nguyên không có: 404.\\
+\bottomrule
+\end{longtable}
+
+\section{Ma trận truy vết yêu cầu}
+\begin{longtable}{p{0.16\textwidth}p{0.38\textwidth}p{0.30\textwidth}}
+\caption{Ma trận truy vết rút gọn}\toprule FR & Use Case & Thành phần mã nguồn\\\midrule
+FR-01 & Authentication & \code{AuthController}, \code{JwtService}, auth tests\\
+FR-02--04 & Dashboard & \code{AnalyticsController}, analytics services/tests\\
+FR-05--08 & DevVocab & \code{TopicController}, \code{LessonController}, devvocab tests\\
+FR-09--11 & Video & \code{VideoController}, video services/tests\\
+FR-12--14 & MemByte & \code{MembyteController}, \code{FsrsService}, Membyte tests\\
+FR-15--18 & TechTalk & \code{RoleplayController}, roleplay services/tests\\
+FR-19--21 & Pronunciation & \code{PronunciationController}, pronunciation tests\\
+FR-22--24 & Honorifics & \code{HonorificsController}, HonorificsServiceTest\\
+FR-25--29 & Admin & admin controllers/services/tests\\
+\bottomrule
+\end{longtable}
+
+\chapter{Thiết kế hệ thống}
+\section{Kiến trúc tổng thể}
+Kiến trúc gồm Flutter và Admin Panel ở lớp client; Spring Boot ở lớp API; MongoDB, Redis, MinIO ở lớp hạ tầng dữ liệu; Gemini/Google/Azure và FastAPI WhisperX ở lớp tích hợp ngoài. API là điểm kiểm soát xác thực, nghiệp vụ, lưu trữ và điều phối AI.
+
+\section{Thiết kế cơ sở dữ liệu}
+\subsection{Mô hình thực thể--quan hệ}
+Mặc dù MongoDB không dùng quan hệ khóa ngoại theo kiểu quan hệ, các liên kết logic gồm User--Progress/Deck/Card, Topic--Lesson, Video--Subtitle/Quiz, Scenario--RoleplaySession và PronunciationExercise--Attempt. Các liên kết người dùng được lưu bằng chuỗi ID.
+\subsection{Mô tả collection MongoDB}
+\begin{longtable}{p{0.29\textwidth}p{0.59\textwidth}}\toprule
+Collection & Mô tả\\\midrule
+users & Tài khoản, profile, streak, settings, stats, refresh token, roles.\\
+topics/lessons & Lộ trình, prerequisite, bài học và vocabulary.\\
+videos & YouTube metadata, subtitle song ngữ, token và quiz marker.\\
+membyte\_decks/flashcards & Bộ thẻ, snapshot nội dung và trạng thái FSRS.\\
+roleplay\_sessions/audio\_assets & Phiên, message/turn, audio object key, transcript, expiry.\\
+pronunciation\_exercises/attempts & Câu mẫu, bản ghi và kết quả đánh giá.\\
+admin\_prompts & Prompt version, status, placeholders và audit timestamps.\\
+\bottomrule\end{longtable}
+
+\section{Biểu đồ trạng thái}
+\subsection{Vòng đời phiên hội thoại Roleplay}
+Phiên đi qua các trạng thái khởi tạo/đang hoạt động, có thể kết thúc bình thường hoặc bị abandon; lịch sử lưu lại trạng thái và kết quả. Mỗi turn có input, response và đánh giá.
+\subsection{Vòng đời thẻ SRS}
+Thẻ mới có \code{isNew=true}; sau rating chuyển sang đã học, lưu dueAt, stability, difficulty, repetitions và lapses. Rating Again tăng lapses và đặt lịch ngắn.
+
+\section{Biểu đồ hoạt động và quy trình nghiệp vụ}
+\subsection{Quy trình học tập tổng thể}
+Đăng nhập $\rightarrow$ chọn dashboard/topic/video $\rightarrow$ thực hiện activity $\rightarrow$ ghi nhận event/progress $\rightarrow$ cập nhật streak và recommendation $\rightarrow$ ôn lại các thẻ đến hạn.
+\subsection{Quy trình quản trị và duyệt nội dung}
+Admin đăng nhập $\rightarrow$ kiểm tra ROLE\_ADMIN $\rightarrow$ tạo/chỉnh sửa nội dung $\rightarrow$ gọi dịch vụ AI nếu cần $\rightarrow$ lưu MongoDB $\rightarrow$ client người học đọc nội dung đã phát hành.
+
+\section{Thiết kế REST API}
+API dùng prefix \code{/api}. Nhóm chính: \code{/auth}, \code{/users}, \code{/analytics}, \code{/topics}, \code{/lessons}, \code{/videos}, \code{/membyte}, \code{/roleplay}, \code{/pronunciation}, \code{/honorifics}, \code{/tts}, \code{/summarizer} và \code{/admin}. Response dùng \code{ApiResponse}; danh sách phân trang dùng \code{PageResponse}.\newline
+\evidence{src/main/java/com/kapor/*/controller/*.java}
+
+\section{Thiết kế giao diện UI/UX tổng quan}
+Flutter tổ chức màn hình theo feature và dùng Provider cho trạng thái; các luồng audio dùng quyền microphone, record và just\_audio. Admin Panel dùng layout dashboard, bảng, biểu mẫu, biểu đồ và màn hình login; màu sắc và token giao diện được tập trung trong mã nguồn frontend.
+
+\section{Thiết kế thuật toán FSRS}
+\subsection{Tổng quan FSRS}
+FSRS biểu diễn \emph{stability} $S$, \emph{difficulty} $D$ và \emph{retrievability} $R$. Trong code, mức ghi nhớ mục tiêu là $0.90$, rating ánh xạ Again=1, Hard=2, Good=3, Easy=4. Đây là mô hình phù hợp với dữ liệu đánh giá nhiều mức và trạng thái bền vững của thẻ.
+\subsection{Bộ tham số huấn luyện W}
+Code cố định vector 17 tham số: \code{0.4197, 1.0921, 5.9172, 0.0117, 1.6172, 1.2172, 0.0812, 0.1544, 1.0824, 0.1833, 0.5015, 1.5674, 0.4525, 2.7473, 0.2223, 0.8267, 1.2503}. Đây là bộ tham số vận hành trong \code{FsrsService}, không có quy trình huấn luyện online trong repository.
+\subsection{Các công thức cốt lõi}
+Với $g$ là grade, stability ban đầu được tính:
+\begin{equation}S_0=\max(0.1,W_0+W_1(g-1)+W_2(g-1)^2+W_3(g-1)^3).\end{equation}
+Độ khó ban đầu: $D=\operatorname{clamp}(W_4-e^{W_5(g-1)}+1,1,10)$. Khi đã có lịch sử, $R=e^{\ln(0.9)\Delta t/S}$; độ khó và stability được cập nhật theo rating. Khoảng ôn được giới hạn tối đa 36.500 ngày và tối thiểu một ngày, riêng Again là khoảng ngắn khoảng một phút.
+\subsection{Luồng xử lý khi đánh giá thẻ}
+Backend lấy card, gọi calculate, cập nhật \code{dueAt}, \code{lastReviewedAt}, \code{difficulty}, \code{stability}, \code{repetitions}; nếu Again thì tăng \code{lapses}. Kết quả trả về interval để giao diện hiển thị.
+\subsection{Cơ chế idempotency}
+Mã nguồn thể hiện chống trùng ở mức dữ liệu bằng compound unique index cho card/deck. Tuy nhiên, không tìm thấy một idempotency key riêng trong request review; do đó việc chống bấm rating lặp trong cùng một phiên cần được kiểm chứng/bổ sung nếu yêu cầu sản phẩm đòi hỏi tuyệt đối không xử lý trùng.
+
+\section{Thiết kế bảo mật}
+\subsection{Xác thực và phân quyền}
+Password dùng BCrypt; session stateless; JWT filter đọc Bearer token và nạp UserDetails. \code{/api/auth/**} và actuator health được public; \code{/api/admin/**} yêu cầu ROLE\_ADMIN; phần còn lại yêu cầu authenticated.
+\subsection{JWT hai lớp}
+\code{JwtService} phát access và refresh token với claim \code{tokenType}, JTI, subject, issuedAt và expiration. User lưu refresh token cùng thời hạn để endpoint refresh kiểm tra token tương ứng.
+\subsection{Luồng JWT mỗi request}
+Filter đọc header; nếu hợp lệ thì xác minh chữ ký, subject, type và expiration, sau đó đặt Authentication vào SecurityContext. Token lỗi để request đi tiếp và Security trả 401; authenticated nhưng thiếu quyền trả 403.
+\subsection{Quy tắc authorization}
+Quyền admin được áp dụng theo namespace, không chỉ dựa trên giao diện. Đây là điểm quan trọng vì Admin Panel vẫn phải được bảo vệ ở backend.
+
+\section{Thiết kế hạ tầng và môi trường triển khai}
+\subsection{Docker Compose}
+Compose khai báo kapor-api, kapor-nlp, MongoDB 7, Redis 7 và MinIO; có volume cho dữ liệu/model, healthcheck cho MongoDB/Redis, giới hạn bộ nhớ và restart policy.
+\subsection{Redis}
+Redis dùng AOF, 512 MB, \code{allkeys-lru}; các lớp limiter/cache của TTS và AI dùng Redis hoặc bộ nhớ đệm tùy service.
+\subsection{MinIO}
+MinIO tương thích S3, lưu audio với endpoint 9000 và console 9001; object key được tham chiếu từ các entity audio, không nhúng tệp nhị phân vào MongoDB.
+\subsection{NLP Microservice}
+FastAPI port 8001 cung cấp health, \code{/korean/candidates} và \code{/pronunciation/transcribe}. WhisperX model được tải lười, cache trong volume; Kiwi được tải khi summarizer cần.
+\subsection{Virtual Threads}
+Java 21 virtual threads là lựa chọn cho nhiều tác vụ chờ I/O AI/NLP, nhưng báo cáo chưa có benchmark để định lượng lợi ích.
+
+\section{Biểu đồ lớp}
+\subsection{Domain Model}
+Các nhóm lớp tiêu biểu: User/analytics; Topic/Lesson/Progress; Video/Subtitle; MembyteDeck/MembyteFlashcard; RoleplaySession/Scenario; PronunciationExercise/Attempt; AdminPrompt. Mỗi nhóm có controller, service, repository và DTO.
+\subsection{Pronunciation Strategy Pattern}
+\code{PronunciationAssessmentProvider} trừu tượng hóa provider; \code{AzureWhisperXPronunciationAssessmentProvider} là triển khai phối hợp transcript/timeline và \code{AzurePronunciationAssessor} cung cấp điểm Azure. Service chọn pipeline mà không gắn controller vào chi tiết provider.
+\subsection{FSRS}
+\code{MembyteService} gọi \code{FsrsService}; model card chứa state, repository truy vấn theo user/dueAt; DTO request chứa rating và DTO result chứa lịch kế tiếp.
+
+\chapter{Triển khai và kiểm thử hệ thống}
+\section{Mục đích và phạm vi}
+Kiểm thử nhằm xác minh nghiệp vụ, bảo mật, xử lý lỗi và tích hợp các domain. Phạm vi bằng chứng gồm backend unit/integration/controller tests, Flutter tests và cấu hình CI.
+\section{Yêu cầu tài nguyên}
+\subsection{Phần cứng} Môi trường NLP GPU production được Compose mô tả với GPU NVIDIA và giới hạn 12 GB cho container; cấu hình cụ thể của máy phát triển không có trong repository.\newline
+\subsection{Phần mềm} Java 21, Maven, Spring Boot, MongoDB 7, Redis 7, Docker Compose, Node/Vite/React, Flutter SDK/Dart 3.10, FastAPI/WhisperX/Kiwi.\newline
+\subsection{Công cụ kiểm thử} Maven Surefire, Spring Boot Test, Spring Security Test, Mockito/Byte Buddy, embedded MongoDB và flutter test.\newline
+\subsection{Môi trường kiểm thử} Backend có \code{application-test.yml} và Embedded MongoDB; chưa có bằng chứng về dữ liệu tải thực tế.
+\section{Phạm vi kiểm thử}
+\subsection{Chức năng đã kiểm thử} Auth/JWT, user, analytics, devvocab, Membyte, TechTalk, Honorifics, Pronunciation, Video, TTS, Summarizer, Admin và exception handler đều có test class tương ứng; Flutter có test dashboard, pronunciation, TechTalk models, devvocab và environment.\newline
+\subsection{Chưa kiểm thử đầy đủ} Không tìm thấy test end-to-end cho toàn bộ luồng qua thiết bị thật, đo tải API, độ chính xác AI trên tập dữ liệu lớn, khả năng chịu lỗi GPU production và benchmark virtual threads.
+\section{Phương pháp kiểm thử}
+\subsection{Functional Testing} Dùng unit test cho service, MockMvc/controller test cho HTTP/security và integration test cho pipeline có embedded MongoDB.\newline
+\subsection{Performance Testing} Chưa có script hoặc báo cáo kết quả JMeter/k6/Gatling trong repository; không thể kết luận latency/RPS.\newline
+\subsection{Defect Severity} Đề xuất phân loại Critical (mất dữ liệu/bypass auth), High (không dùng được chức năng chính), Medium (sai nghiệp vụ phụ), Low (giao diện/không ảnh hưởng dữ liệu). Đây là quy ước báo cáo, không phải một module đã thấy trong code.
+\section{Kết quả kiểm thử chức năng}
+\subsection{Tổng quan kết quả}
+Repository có 182 khai báo \code{@Test} trong backend theo thống kê tệp tại thời điểm lập báo cáo, trải rộng trên các domain. Đây là số lượng test được phát hiện, không phải tỷ lệ pass do chưa chạy toàn bộ pipeline trong báo cáo.
+\subsection{Chi tiết theo nhóm}
+\begin{longtable}{p{0.30\textwidth}p{0.45\textwidth}p{0.16\textwidth}}\toprule
+Nhóm & Test tiêu biểu & Bằng chứng\\\midrule
+Auth/Security & AuthService, AuthController, JwtService, SecurityConfig & Có\\
+Analytics/DevVocab/MemByte & service/controller tests & Có\\
+Video/TTS/Summarizer & subtitle, Gemini TTS, summarizer tests & Có\\
+TechTalk/Honorifics & roleplay provider/service, honorific service & Có\\
+Pronunciation & Azure, scorer, E2E controller & Có\\
+Admin/Exception & admin service/controller, global handler & Có\\
+Flutter & dashboard, pronunciation, DevVocab, models & Có\\
+\bottomrule\end{longtable}
+\subsection{Test case thất bại và giải pháp}
+Không có báo cáo chạy test hoặc danh sách test thất bại được lưu trong các tệp đã khảo sát. Vì vậy không thể nêu root cause cụ thể mà không suy diễn. Khi hoàn thiện hồ sơ kiểm thử cần lưu CI artifact gồm test report, stack trace, nguyên nhân, commit sửa và kết quả chạy lại.
+\subsection{Nhận xét}
+Độ bao phủ theo domain là điểm mạnh; hạn chế là thiếu số liệu coverage, kết quả pass/fail tập trung và kiểm thử hiệu năng có thể tái lập.
+\section{Kết quả kiểm thử hiệu năng}
+\subsection{Mục đích} Đo khả năng đáp ứng của API, Redis/MongoDB, SSE và NLP dưới tải đồng thời.\newline
+\subsection{Kịch bản} Đề xuất các kịch bản login/dashboard, review card, roleplay stream, pronunciation upload và admin list.\newline
+\subsection{Chỉ số} latency p50/p95/p99, RPS, error rate, CPU/RAM, thời gian NLP và tỷ lệ timeout.\newline
+\subsection{Kết quả chi tiết} Chưa có số liệu thực nghiệm trong repository; mục này không được điền bằng số giả.\newline
+\subsection{Nhận xét} Cần chạy benchmark trên môi trường cố định, ghi rõ dataset, concurrency, thời lượng, model WhisperX/Gemini/Azure và cấu hình GPU trước khi công bố kết quả định lượng.
+
+\chapter{Kết luận và hướng phát triển}
+\section{Kết quả đạt được}
+\subsection{Lý thuyết và nghiên cứu}
+Đồ án đã cụ thể hóa các khái niệm SRS/FSRS, JWT, SSE, TTS, ASR, forced alignment, NLP microservice và kiến trúc phân lớp vào một sản phẩm có nhiều miền nghiệp vụ.
+\subsection{Sản phẩm thực tiễn}
+Mã nguồn cung cấp backend Spring Boot, mobile Flutter, Admin Panel React, Docker Compose, tích hợp MongoDB/Redis/MinIO, AI/NLP, quản trị nội dung, hội thoại, phát âm và ôn tập. Bộ test được tổ chức theo domain, giúp kiểm chứng các nghiệp vụ trọng tâm.
+\section{Hạn chế của hệ thống}
+Các hạn chế có bằng chứng gồm: chưa có benchmark hiệu năng trong repository; dịch vụ AI phụ thuộc provider ngoài; NLP WhisperX cần tài nguyên model/GPU; một số luồng tích hợp cần secret và môi trường triển khai; chưa thấy idempotency key riêng cho review; chưa có hồ sơ pass/fail và coverage hợp nhất.
+\section{Hướng phát triển}
+Ưu tiên bổ sung benchmark k6/JMeter, test contract cho NLP/AI, idempotency key cho review, quan sát latency/cost/provider, retry và circuit breaker, quản lý phiên refresh token mạnh hơn, kiểm thử thiết bị thật, đánh giá chất lượng AI trên bộ dữ liệu chuẩn và hoàn thiện tài liệu vận hành.
+
+\begin{thebibliography}{9}
+\bibitem{source-backend} Mã nguồn Kapor Backend, thư mục \code{kapor-backend/src/main/java} và \code{src/test/java}, phiên bản khảo sát ngày 02/08/2026.
+\bibitem{source-mobile} Mã nguồn Kapor Flutter, thư mục \code{kapor_flutter/lib}, \code{pubspec.yaml} và \code{test}.
+\bibitem{source-admin} Mã nguồn Kapor Admin, thư mục \code{kapor-admin/src}, \code{package.json}.
+\bibitem{source-docs} Tài liệu yêu cầu và quy trình: \code{chuong_3_phan_tich_yeu_cau_chuc_nang.md}, \code{yeu_cau_phi_chuc_nang_kapor.md}, \code{full_project_workflow_documentation.md}.
+\bibitem{source-deploy} Cấu hình triển khai: \code{kapor-backend/docker-compose.yml}, \code{Dockerfile}, \code{kapor-nlp/main.py} và \code{requirements.txt}.
+\end{thebibliography}
+\end{document}

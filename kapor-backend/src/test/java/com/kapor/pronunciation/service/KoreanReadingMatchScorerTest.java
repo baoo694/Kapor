@@ -31,6 +31,20 @@ class KoreanReadingMatchScorerTest {
     }
 
     @Test
+    void countsACloseHangulMispronunciationAsAReadTargetWord() {
+        assertThat(scorer.completeness(
+                "비동기 처리를 구현했습니다", "피동기 처리를 구현했습니다"))
+                .isEqualTo(100);
+    }
+
+    @Test
+    void doesNotCountAnUnrelatedSubstitutionAsWordCoverage() {
+        assertThat(scorer.completeness(
+                "비동기 처리를 구현했습니다", "비동기 마우스를 구현했습니다"))
+                .isEqualTo(67);
+    }
+
+    @Test
     void rejectsACompletelyDifferentSentence() {
         assertThat(scorer.isDifferentSentence(
                 "비동기 처리를 구현했습니다", "네 안녕하세요 저는 파로고입니다", 0)).isTrue();

@@ -19,6 +19,8 @@ final class KoreanReadingMatchScorer {
     private static final int CLEAR_MISMATCH_SIMILARITY = 35;
     private static final int PROBABLE_MISMATCH_SIMILARITY = 55;
     private static final int LOW_AZURE_COMPLETENESS = 50;
+    /** A close ASR spelling such as 비동기 -> 피동기 still means the word was read. */
+    private static final int COVERED_WORD_SIMILARITY = 55;
 
     PronunciationAssessmentProvider.Assessment score(String expectedText, String transcription, double durationSeconds) {
         List<String> expectedWords = words(expectedText);
@@ -29,8 +31,7 @@ final class KoreanReadingMatchScorer {
         String expectedCompact = jamo(normalize(expectedText).replace(" ", ""));
         String actualCompact = jamo(normalize(transcription).replace(" ", ""));
         int accuracy = percent(similarity(expectedCompact, actualCompact));
-        int matchedWords = (int) alignment.stream().filter(match -> match.actual() != null).count();
-        int completeness = expectedWords.isEmpty() ? 0 : percent((double) matchedWords / expectedWords.size());
+        int completeness = completeness(expectedWords, alignment);
         int pace = paceScore(expectedCompact.length() / 3, durationSeconds);
         return new PronunciationAssessmentProvider.Assessment(
                 PronunciationAttempt.Scores.builder()
@@ -67,6 +68,16 @@ final class KoreanReadingMatchScorer {
         if (expected.isBlank()) return false;
         if (actual.isBlank()) return true;
         return readingSimilarity(expected, actual) < CLEAR_MISMATCH_SIMILARITY;
+    }
+
+    /**
+     * Learner-facing word coverage. A target word counts only when WhisperX
+     * heard a sufficiently similar word in its aligned position; this avoids
+     * treating a completely different substitution as an omitted word's match.
+     */
+    int completeness(String expectedText, String transcription) {
+        List<String> expectedWords = words(expectedText);
+        return completeness(expectedWords, align(expectedWords, words(transcription)));
     }
 
     int readingSimilarity(String expectedText, String transcription) {
@@ -116,6 +127,16 @@ final class KoreanReadingMatchScorer {
                 : "Whisper nhận dạng: " + match.actual() + " · độ khớp Hangul " + match.score() + "/100";
         return PronunciationAttempt.WordFeedback.builder().text(match.expected()).score(match.score())
                 .accuracy(label(match.score())).phonemeDetail(detail).build();
+    }
+
+    private int completeness(List<String> expectedWords, List<WordMatch> alignment) {
+        if (expectedWords.isEmpty()) return 0;
+        long coveredWords = alignment.stream().filter(this::isCovered).count();
+        return percent((double) coveredWords / expectedWords.size());
+    }
+
+    private boolean isCovered(WordMatch match) {
+        return match.actual() != null && match.score() >= COVERED_WORD_SIMILARITY;
     }
 
     private List<String> words(String text) {

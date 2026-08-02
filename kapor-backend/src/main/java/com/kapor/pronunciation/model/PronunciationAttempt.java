@@ -45,6 +45,7 @@ public class PronunciationAttempt {
     public static class Scores {
         private Integer accuracy;
         private Integer fluency;
+        /** WhisperX transcript word coverage. Azure's raw value stays internal. */
         private Integer completeness;
         /** Azure's PronScore. overall is retained for older mobile clients. */
         private Integer pronunciation;

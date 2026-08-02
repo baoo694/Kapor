@@ -32,6 +32,14 @@ public class AzureWhisperXPronunciationAssessmentProvider implements Pronunciati
             throw new WhisperPreflightRejectedException(transcript);
         }
         AzurePronunciationAssessor.Result azure = azureAssessor.assess(referenceText, wavAudio);
+        Integer azureCompleteness = azure.scores() == null ? null : azure.scores().getCompleteness();
+        // Azure's Korean CompletenessScore can penalize an imprecise but still
+        // present word. The UI's “Đủ từ” therefore represents WhisperX word
+        // coverage, while raw Azure completeness remains internal evidence for
+        // borderline wrong-sentence detection.
+        if (azure.scores() != null) {
+            azure.scores().setCompleteness(readingMatchScorer.completeness(referenceText, transcript.getText()));
+        }
 
         PronunciationAttempt.Analysis analysis;
         try {
@@ -41,7 +49,7 @@ public class AzureWhisperXPronunciationAssessmentProvider implements Pronunciati
             analysis = deterministicFallback(azure.words());
         }
         return new Assessment(azure.scores(), transcript.getText(), azure.words(), analysis, transcript,
-                "azure-pa", "whisperx");
+                "azure-pa", "whisperx", azureCompleteness);
     }
 
     private PronunciationAttempt.Analysis deterministicFallback(List<PronunciationAttempt.WordFeedback> words) {

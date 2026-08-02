@@ -85,9 +85,11 @@ public class PronunciationService {
             PronunciationAssessmentProvider.Assessment assessment = assessmentProvider.assess(
                     userId, referenceText, wav);
             String transcriptionText = transcriptionText(assessment);
-            Integer completeness = assessment.scores() == null ? null : assessment.scores().getCompleteness();
+            Integer azureCompleteness = assessment.azureCompleteness() != null
+                    ? assessment.azureCompleteness()
+                    : assessment.scores() == null ? null : assessment.scores().getCompleteness();
             boolean differentSentence = readingMatchScorer.isDifferentSentence(
-                    referenceText, transcriptionText, completeness);
+                    referenceText, transcriptionText, azureCompleteness);
             attempt.setStatus(differentSentence ? "wrong_sentence" : "completed");
             attempt.setScores(assessment.scores());
             attempt.setTranscriptionText(transcriptionText);

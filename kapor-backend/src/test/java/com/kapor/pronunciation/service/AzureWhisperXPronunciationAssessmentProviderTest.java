@@ -13,6 +13,39 @@ import static org.assertj.core.api.Assertions.assertThat;
 class AzureWhisperXPronunciationAssessmentProviderTest {
 
     @Test
+    void reportsWhisperWordCoverageInsteadOfAzureCompleteness() {
+        PronunciationAttempt.Scores azureScores = PronunciationAttempt.Scores.builder()
+                .overall(52).accuracy(63).fluency(100).completeness(33).build();
+        AzurePronunciationAssessor azure = new AzurePronunciationAssessor(null, null) {
+            @Override
+            public Result assess(String referenceText, byte[] wavAudio) {
+                return new Result(azureScores, java.util.List.of());
+            }
+        };
+        WhisperXTranscriber whisperX = new WhisperXTranscriber(null) {
+            @Override
+            public PronunciationAttempt.Transcript transcribe(byte[] wavAudio, String referenceText) {
+                return PronunciationAttempt.Transcript.builder().provider("whisperx")
+                        .text("피동기 처리를 구현했습니다").durationSeconds(2.4d).build();
+            }
+        };
+        GeminiPronunciationAnalyzer gemini = new GeminiPronunciationAnalyzer(WebClient.builder(), new ObjectMapper()) {
+            @Override
+            public PronunciationAttempt.Analysis explain(AzurePronunciationAssessor.Result azure,
+                                                          PronunciationAttempt.Transcript transcript) {
+                return PronunciationAttempt.Analysis.builder().provider("gemini").status("completed").build();
+            }
+        };
+        AzureWhisperXPronunciationAssessmentProvider provider =
+                new AzureWhisperXPronunciationAssessmentProvider(azure, whisperX, gemini, new KoreanReadingMatchScorer());
+
+        var result = provider.assess("user-1", "비동기 처리를 구현했습니다", new byte[] {1, 2, 3});
+
+        assertThat(result.scores().getCompleteness()).isEqualTo(100);
+        assertThat(result.azureCompleteness()).isEqualTo(33);
+    }
+
+    @Test
     void rejectsAClearlyDifferentWhisperTranscriptBeforeCallingAzure() {
         AtomicBoolean azureCalled = new AtomicBoolean();
         AtomicBoolean geminiCalled = new AtomicBoolean();

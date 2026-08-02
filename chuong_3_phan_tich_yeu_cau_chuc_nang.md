@@ -80,7 +80,7 @@ Quá trình phân tích yêu cầu chức năng được thực hiện dựa tr�
 ### 3.3.6. Phân hệ Luyện phát âm và Shadowing (Pronunciation Lab)
 
 - **[FR-19] Ghi âm giọng đọc đối chiếu:** Người học chọn bài luyện, nghe câu mẫu bằng TTS, ghi âm qua microphone và gửi bản ghi PCM cho backend. Backend chuẩn hóa bản ghi thành WAV trước khi thực hiện đánh giá.
-- **[FR-20] Phân tích và chấm điểm phát âm (Pronunciation Assessment):** Azure Speech Pronunciation Assessment cung cấp điểm tổng thể, Accuracy, Fluency, Completeness cùng bằng chứng theo từ và âm vị. WhisperX cung cấp transcript và timeline; Gemini tạo phần giải thích luyện tập bằng tiếng Việt dựa trên kết quả Azure. Điểm hiển thị cho người học được lấy từ Azure.
+- **[FR-20] Phân tích và chấm điểm phát âm (Pronunciation Assessment):** Azure Speech Pronunciation Assessment cung cấp điểm tổng thể, Accuracy, Fluency cùng bằng chứng theo từ và âm vị. WhisperX cung cấp transcript, timeline và điểm Đủ từ dựa trên độ phủ từ/cụm trong câu mẫu; Gemini tạo phần giải thích luyện tập bằng tiếng Việt dựa trên kết quả Azure. Điểm phát âm hiển thị cho người học lấy từ Azure, còn Đủ từ lấy từ WhisperX.
 - **[FR-21] Lịch sử và phát lại bản thu:** Mỗi lần đánh giá được lưu vào lịch sử cùng kết quả và thông tin tệp âm thanh. Người học có thể mở lại một lần luyện và phát bản ghi còn trong thời hạn lưu trữ để tự đối chiếu.
 
 ### 3.3.7. Phân hệ Phân tích Ngữ pháp và Kính ngữ (Honorifics Analyzer)

@@ -22,7 +22,23 @@ public interface PronunciationAssessmentProvider {
             PronunciationAttempt.Analysis analysis,
             PronunciationAttempt.Transcript transcript,
             String assessmentProvider,
-            String transcriptProvider) {
+            String transcriptProvider,
+            Integer azureCompleteness) {
+
+        /**
+         * Compatibility constructor for providers and test fixtures that do
+         * not preserve Azure's raw completeness separately from the
+         * learner-facing WhisperX word-coverage score.
+         */
+        public Assessment(PronunciationAttempt.Scores scores,
+                          String transcription,
+                          List<PronunciationAttempt.WordFeedback> wordFeedback,
+                          PronunciationAttempt.Analysis analysis,
+                          PronunciationAttempt.Transcript transcript,
+                          String assessmentProvider,
+                          String transcriptProvider) {
+            this(scores, transcription, wordFeedback, analysis, transcript, assessmentProvider, transcriptProvider, null);
+        }
 
         /**
          * Compatibility constructor for the previous, single-provider test
@@ -33,7 +49,7 @@ public interface PronunciationAssessmentProvider {
                           String transcription,
                           List<PronunciationAttempt.WordFeedback> wordFeedback,
                           PronunciationAttempt.Analysis analysis) {
-            this(scores, transcription, wordFeedback, analysis, null, null, null);
+            this(scores, transcription, wordFeedback, analysis, null, null, null, null);
         }
     }
 }
