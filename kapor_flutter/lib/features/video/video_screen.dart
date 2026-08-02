@@ -331,6 +331,44 @@ class _VideoScreenState extends State<VideoScreen> {
     return subtitles.length - 1;
   }
 
+  int _activeTokenIndex(VideoSubtitle? subtitle) {
+    if (subtitle == null || subtitle.tokens.isEmpty) return -1;
+    final duration = subtitle.end - subtitle.start;
+    if (duration <= 0 ||
+        _position < subtitle.start ||
+        _position >= subtitle.end) {
+      return -1;
+    }
+
+    // Subtitle data has timestamps per line rather than per spoken word. Use
+    // visible-character weights so the highlight progresses naturally without
+    // needing an ASR pass for every video.
+    final weights = subtitle.tokens
+        .map((token) => token.surface.runes.where(_isTimedCharacter).length)
+        .map((length) => length < 1 ? 1 : length)
+        .toList();
+    final totalWeight = weights.fold<int>(0, (total, weight) => total + weight);
+    final elapsedFraction = ((_position - subtitle.start) / duration).clamp(
+      0.0,
+      0.999999,
+    );
+    final progress = elapsedFraction * totalWeight;
+    var accumulated = 0;
+    for (var index = 0; index < weights.length; index++) {
+      accumulated += weights[index];
+      if (progress < accumulated) return index;
+    }
+    return weights.length - 1;
+  }
+
+  bool _isTimedCharacter(int codePoint) =>
+      (codePoint >= 0xAC00 && codePoint <= 0xD7A3) ||
+      (codePoint >= 0x1100 && codePoint <= 0x11FF) ||
+      (codePoint >= 0x3130 && codePoint <= 0x318F) ||
+      (codePoint >= 0x30 && codePoint <= 0x39) ||
+      (codePoint >= 0x41 && codePoint <= 0x5A) ||
+      (codePoint >= 0x61 && codePoint <= 0x7A);
+
   Future<void> _seekTo(double seconds) async {
     final duration = _durationSeconds;
     final target = duration > 0
@@ -579,68 +617,95 @@ class _VideoScreenState extends State<VideoScreen> {
     return '$minutes:${remainingSeconds.toString().padLeft(2, '0')}';
   }
 
-  Widget _subtitleOverlay(VideoSubtitle? korean, VideoSubtitle? vietnamese) =>
-      Align(
-        alignment: Alignment.bottomCenter,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: .75),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Wrap(
-                alignment: WrapAlignment.center,
-                spacing: 4,
-                runSpacing: 2,
-                children: (korean?.tokens ?? const [])
-                    .map(
-                      (token) => TextButton(
-                        onPressed: token.clickable
-                            ? () => _showWord(token)
-                            : null,
-                        style: TextButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          minimumSize: Size.zero,
-                          padding: EdgeInsets.zero,
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          textStyle: GoogleFonts.outfit(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            decoration: TextDecoration.underline,
-                            decorationStyle: TextDecorationStyle.dotted,
-                            decorationColor: Colors.white54,
-                          ),
-                        ),
-                        child: Text(token.surface),
-                      ),
-                    )
-                    .toList(),
-              ),
-              if ((korean?.tokens ?? const []).isEmpty)
-                Text(
-                  korean?.text ?? '…',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.outfit(
-                    fontSize: 14,
-                    color: Colors.white,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              if ((vietnamese?.text ?? '').isNotEmpty) ...[
-                const SizedBox(height: 3),
-                Text(
-                  vietnamese!.text,
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.inter(fontSize: 10, color: Colors.white60),
-                ),
-              ],
-            ],
-          ),
+  Widget _subtitleOverlay(VideoSubtitle? korean, VideoSubtitle? vietnamese) {
+    final activeTokenIndex = _activeTokenIndex(korean);
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: .75),
+          borderRadius: BorderRadius.circular(8),
         ),
-      );
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 4,
+              runSpacing: 2,
+              children: (korean?.tokens ?? const []).asMap().entries.map((
+                entry,
+              ) {
+                final token = entry.value;
+                final isActive = entry.key == activeTokenIndex;
+                final foreground = isActive ? _videoAmber : Colors.white;
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  curve: Curves.easeOut,
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? _videoAmber.withValues(alpha: .18)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(4),
+                    boxShadow: isActive
+                        ? [
+                            BoxShadow(
+                              color: _videoAmber.withValues(alpha: .18),
+                              blurRadius: 8,
+                            ),
+                          ]
+                        : const [],
+                  ),
+                  child: TextButton(
+                    onPressed: token.clickable ? () => _showWord(token) : null,
+                    style: TextButton.styleFrom(
+                      foregroundColor: foreground,
+                      disabledForegroundColor: foreground,
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(horizontal: 2),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      textStyle: GoogleFonts.outfit(
+                        fontSize: 14,
+                        fontWeight: isActive
+                            ? FontWeight.w800
+                            : FontWeight.w600,
+                        decoration: isActive
+                            ? TextDecoration.none
+                            : TextDecoration.underline,
+                        decorationStyle: TextDecorationStyle.dotted,
+                        decorationColor: Colors.white54,
+                      ),
+                    ),
+                    child: Text(token.surface),
+                  ),
+                );
+              }).toList(),
+            ),
+            if ((korean?.tokens ?? const []).isEmpty)
+              Text(
+                korean?.text ?? '…',
+                textAlign: TextAlign.center,
+                style: GoogleFonts.outfit(
+                  fontSize: 14,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            if ((vietnamese?.text ?? '').isNotEmpty) ...[
+              const SizedBox(height: 3),
+              Text(
+                vietnamese!.text,
+                textAlign: TextAlign.center,
+                style: GoogleFonts.inter(fontSize: 10, color: Colors.white60),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showWord(VideoToken token) {
     _player?.pauseVideo();
     final video = _video;
