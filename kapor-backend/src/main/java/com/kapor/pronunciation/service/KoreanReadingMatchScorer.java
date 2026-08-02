@@ -47,14 +47,26 @@ final class KoreanReadingMatchScorer {
     boolean isDifferentSentence(String expectedText, String transcription, Integer azureCompleteness) {
         String expected = normalize(expectedText);
         String actual = normalize(transcription);
-        if (expected.isBlank()) return false;
-        if (actual.isBlank()) return true;
+        if (isClearlyDifferentSentence(expected, actual)) return true;
 
         int similarity = readingSimilarity(expected, actual);
-        if (similarity < CLEAR_MISMATCH_SIMILARITY) return true;
         return similarity < PROBABLE_MISMATCH_SIMILARITY
                 && azureCompleteness != null
                 && azureCompleteness < LOW_AZURE_COMPLETENESS;
+    }
+
+    /**
+     * The preflight gate deliberately uses only the unambiguous cases. It is
+     * safe to run before Azure because it needs no Azure score: an empty
+     * transcript or less than 35% Hangul similarity cannot be usefully
+     * evaluated as the exercise sentence.
+     */
+    boolean isClearlyDifferentSentence(String expectedText, String transcription) {
+        String expected = normalize(expectedText);
+        String actual = normalize(transcription);
+        if (expected.isBlank()) return false;
+        if (actual.isBlank()) return true;
+        return readingSimilarity(expected, actual) < CLEAR_MISMATCH_SIMILARITY;
     }
 
     int readingSimilarity(String expectedText, String transcription) {

@@ -5,16 +5,12 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
 import java.util.stream.IntStream;
 
 /**
- * Combines independent evidence without allowing one provider to impersonate
- * another: Azure supplies scores, WhisperX supplies transcript/timeline, and
- * Gemini only turns the resulting facts into Vietnamese coaching text.
+ * WhisperX first verifies that the learner read the exercise sentence. Only
+ * then does Azure score pronunciation; Gemini only turns those facts into
+ * Vietnamese coaching text.
  */
 @Service
 @RequiredArgsConstructor
@@ -22,6 +18,7 @@ public class AzureWhisperXPronunciationAssessmentProvider implements Pronunciati
     private final AzurePronunciationAssessor azureAssessor;
     private final WhisperXTranscriber whisperXTranscriber;
     private final GeminiPronunciationAnalyzer geminiAnalyzer;
+    private final KoreanReadingMatchScorer readingMatchScorer;
 
     @Override
     public String name() {
@@ -30,15 +27,11 @@ public class AzureWhisperXPronunciationAssessmentProvider implements Pronunciati
 
     @Override
     public Assessment assess(String userId, String referenceText, byte[] wavAudio) {
-        AzurePronunciationAssessor.Result azure;
-        PronunciationAttempt.Transcript transcript;
-        try (ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor()) {
-            Future<AzurePronunciationAssessor.Result> azureFuture = executor.submit(() -> azureAssessor.assess(referenceText, wavAudio));
-            Future<PronunciationAttempt.Transcript> transcriptFuture = executor.submit(
-                    () -> whisperXTranscriber.transcribe(wavAudio, referenceText));
-            azure = result(azureFuture);
-            transcript = result(transcriptFuture);
+        PronunciationAttempt.Transcript transcript = whisperXTranscriber.transcribe(wavAudio, referenceText);
+        if (readingMatchScorer.isClearlyDifferentSentence(referenceText, transcript.getText())) {
+            throw new WhisperPreflightRejectedException(transcript);
         }
+        AzurePronunciationAssessor.Result azure = azureAssessor.assess(referenceText, wavAudio);
 
         PronunciationAttempt.Analysis analysis;
         try {
@@ -49,18 +42,6 @@ public class AzureWhisperXPronunciationAssessmentProvider implements Pronunciati
         }
         return new Assessment(azure.scores(), transcript.getText(), azure.words(), analysis, transcript,
                 "azure-pa", "whisperx");
-    }
-
-    private <T> T result(Future<T> future) {
-        try {
-            return future.get();
-        } catch (InterruptedException exception) {
-            Thread.currentThread().interrupt();
-            throw new IllegalStateException("Đánh giá phát âm đã bị gián đoạn.", exception);
-        } catch (ExecutionException exception) {
-            if (exception.getCause() instanceof RuntimeException runtimeException) throw runtimeException;
-            throw new IllegalStateException("Không thể hoàn tất đánh giá phát âm.", exception.getCause());
-        }
     }
 
     private PronunciationAttempt.Analysis deterministicFallback(List<PronunciationAttempt.WordFeedback> words) {

@@ -27,7 +27,9 @@ services:
 
   # ---- NLP Microservice ----
   kapor-nlp:
-    build: ./kapor-nlp
+    build:
+      context: ./kapor-nlp
+      dockerfile: Dockerfile.gpu
     ports:
       - "8001:8001"
     volumes:
@@ -35,17 +37,23 @@ services:
     restart: unless-stopped
     environment:
       HF_HOME: /models
-      # large-v3-turbo improves Korean ASR while its pruned decoder keeps
-      # CPU-only latency practical for short pronunciation exercises.
+      # GPU defaults for the NVIDIA production VM. The model remains cached
+      # in the named volume across container recreations.
       WHISPERX_MODEL: ${WHISPERX_MODEL:-large-v3-turbo}
-      WHISPERX_DEVICE: ${WHISPERX_DEVICE:-cpu}
-      WHISPERX_COMPUTE_TYPE: ${WHISPERX_COMPUTE_TYPE:-int8}
+      WHISPERX_DEVICE: ${WHISPERX_DEVICE:-cuda}
+      WHISPERX_COMPUTE_TYPE: ${WHISPERX_COMPUTE_TYPE:-float16}
       WHISPERX_VAD_METHOD: ${WHISPERX_VAD_METHOD:-silero}
-      WHISPERX_BATCH_SIZE: ${WHISPERX_BATCH_SIZE:-1}
+      # Start conservatively on a 16 GB NVIDIA T4. Increase only after benchmarking.
+      WHISPERX_BATCH_SIZE: ${WHISPERX_GPU_BATCH_SIZE:-4}
     deploy:
       resources:
         limits:
-          memory: 8G
+          memory: 12G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
 
   # ---- Database ----
   mongo:

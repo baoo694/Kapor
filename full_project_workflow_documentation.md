@@ -226,9 +226,9 @@ flowchart TD
 3. **Model Java cô lập `AdminPrompt.java`**:
    - *Vị trí*: `/Users/quachgiabao/Kapor/kapor/admin/model/AdminPrompt.java`.
    - *Trạng thái*: Nằm ở cây thư mục độc lập `kapor/` bên ngoài thư mục dự án Maven (`kapor-backend/src/main/java`), không có nơi nhập hay thực thi.
-4. **Cấu hình GPU Docker `docker-compose.gpu.yml` & `Dockerfile.gpu`**:
-   - *Vị trí*: `kapor-backend/kapor-nlp/Dockerfile.gpu` & `kapor-backend/docker-compose.gpu.yml`.
-   - *Trạng thái*: Cấu hình dành riêng cho môi trường chạy máy chủ GPU cho WhisperX, hiện tại dự án chính đang vận hành thông qua file `docker-compose.yml` (CPU mode).
+4. **Cấu hình GPU Docker mặc định cho WhisperX**:
+   - *Vị trí*: `kapor-backend/docker-compose.yml` & `kapor-backend/kapor-nlp/Dockerfile.gpu`.
+   - *Trạng thái*: Dự án mặc định chạy WhisperX trên NVIDIA GPU qua CUDA (`WHISPERX_DEVICE=cuda`, `float16`); Docker Compose đặt GPU reservation cho container `kapor-nlp`.
 
 ---
 

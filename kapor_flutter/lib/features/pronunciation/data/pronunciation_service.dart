@@ -414,8 +414,8 @@ class PronunciationService {
         contentType: DioMediaType('audio', 'pcm'),
       ),
     });
-    // Azure PA and WhisperX run in parallel; Gemini only renders Vietnamese
-    // explanations after both evidence sources complete.
+    // WhisperX first validates the reading. Azure PA runs only when it passes;
+    // Gemini then renders Vietnamese explanations from the resulting evidence.
     final data = await _data(
       _dio.post(
         '/pronunciation/evaluate',

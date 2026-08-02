@@ -101,6 +101,20 @@ public class PronunciationService {
                     ? wrongSentenceMessage(transcriptionText)
                     : "Azure đã đánh giá phát âm; WhisperX đã tạo transcript và timeline.";
             return evaluation(attempt, exercise, message);
+        } catch (WhisperPreflightRejectedException exception) {
+            PronunciationAttempt.Transcript transcript = exception.transcript();
+            String transcriptionText = transcript == null || transcript.getText() == null ? "" : transcript.getText().trim();
+            attempt.setStatus("wrong_sentence");
+            attempt.setProvider("whisperx_preflight");
+            attempt.setAssessmentVersion("whisperx-preflight-v1");
+            attempt.setScores(null);
+            attempt.setTranscriptionText(transcriptionText);
+            attempt.setTranscript(transcript);
+            attempt.setAssessmentWords(List.of());
+            attempt.setTranscription(List.of());
+            attempt.setAnalysis(null);
+            attempt = attemptRepository.save(attempt);
+            return evaluation(attempt, exercise, wrongSentenceMessage(transcriptionText));
         } catch (RuntimeException exception) {
             attempt.setStatus("provider_error");
             attemptRepository.save(attempt);
