@@ -18,7 +18,9 @@ import org.springframework.web.reactive.function.client.WebClient;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /** Calls Gemini with a strict JSON schema for Korean subtitle translation and tokenization. */
 @Service
@@ -49,13 +51,17 @@ public class GeminiSubtitleService {
         }
     }
 
-    public List<TranslationLine> translate(List<Video.SubtitleLine> subtitles) {
+    /**
+     * Translates subtitle cues with sentence-level context while preserving one
+     * Vietnamese result for every original SRT cue.
+     */
+    public List<TranslationLine> translateGrouped(List<TranslationGroup> groups) {
         if (apiKey == null || apiKey.isBlank() || apiKey.startsWith("your-")) {
             throw new GeminiApiException(HttpStatus.BAD_GATEWAY, "Gemini is not configured. Set GEMINI_API_KEY on the backend and restart it.");
         }
-        JsonNode response = generate(translationRequestBody(subtitles));
+        JsonNode response = generate(groupedTranslationRequestBody(groups));
         try {
-            return parseTranslationResponse(response, subtitles.size());
+            return parseTranslationResponse(response, translationIndexes(groups));
         } catch (GeminiApiException exception) {
             throw exception;
         } catch (RuntimeException exception) {
@@ -132,11 +138,11 @@ public class GeminiSubtitleService {
         }
     }
 
-    private ObjectNode translationRequestBody(List<Video.SubtitleLine> subtitles) {
+    private ObjectNode groupedTranslationRequestBody(List<TranslationGroup> groups) {
         ObjectNode root = objectMapper.createObjectNode();
         ArrayNode contents = root.putArray("contents");
         ArrayNode parts = contents.addObject().putArray("parts");
-        parts.addObject().put("text", translationPrompt(subtitles));
+        parts.addObject().put("text", groupedTranslationPrompt(groups));
         ObjectNode generationConfig = root.putObject("generationConfig");
         generationConfig.put("temperature", 0.2);
         generationConfig.put("responseMimeType", "application/json");
@@ -144,21 +150,26 @@ public class GeminiSubtitleService {
         return root;
     }
 
-    private String translationPrompt(List<Video.SubtitleLine> subtitles) {
+    private String groupedTranslationPrompt(List<TranslationGroup> groups) {
         ArrayNode input = objectMapper.createArrayNode();
-        for (int index = 0; index < subtitles.size(); index++) {
-            input.addObject().put("index", index).put("korean", subtitles.get(index).getText());
+        for (int groupIndex = 0; groupIndex < groups.size(); groupIndex++) {
+            ObjectNode group = input.addObject().put("group", groupIndex);
+            ArrayNode lines = group.putArray("lines");
+            for (TranslationSourceLine line : groups.get(groupIndex).lines()) {
+                lines.addObject().put("index", line.index()).put("korean", line.korean());
+            }
         }
         try {
             return """
                     You are a Korean language educator translating Korean video subtitles into natural Vietnamese.
-                    For every input line, return exactly one result with the same index.
-                    Translate the full sentence naturally, retaining technical terminology when relevant.
+                    Each group contains consecutive SRT cues that may be fragments of one spoken Korean sentence. Read every line in a group before translating it.
+                    Return exactly one result for every original line index. Preserve the order of meaning and translate only the content spoken in that line. A Vietnamese result may be a natural phrase or sentence fragment when the Korean cue is unfinished.
+                    When a sentence spans multiple lines, distribute its Vietnamese translation naturally across those same lines. Never repeat words or meaning that belong exclusively to another line in the same group. Do not invent missing content.
                     Do not tokenize, analyze grammar, add notes, add Markdown, or omit a line.
-                    Input lines:
+                    Input groups:
                     """ + objectMapper.writeValueAsString(input);
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Unable to prepare Gemini subtitle translation request", exception);
+            throw new IllegalStateException("Unable to prepare grouped Gemini subtitle translation request", exception);
         }
     }
 
@@ -314,32 +325,42 @@ public class GeminiSubtitleService {
         }
     }
 
-    private List<TranslationLine> parseTranslationResponse(JsonNode response, int expectedLines) {
+    private List<TranslationLine> parseTranslationResponse(JsonNode response, Set<Integer> expectedIndexes) {
         if (response == null) throw new IllegalStateException("Gemini returned an empty response");
         JsonNode text = response.path("candidates").path(0).path("content").path("parts").path(0).path("text");
         if (!text.isTextual()) throw new IllegalStateException("Gemini did not return subtitle translations");
         try {
             JsonNode lines = objectMapper.readTree(text.asText()).path("lines");
-            if (!lines.isArray() || lines.size() != expectedLines) {
+            if (!lines.isArray() || lines.size() != expectedIndexes.size()) {
                 throw new IllegalStateException("Gemini returned incomplete subtitle translations");
             }
             List<TranslationLine> result = new ArrayList<>();
+            Set<Integer> returnedIndexes = new HashSet<>();
             for (JsonNode line : lines) {
                 int index = line.path("index").asInt(-1);
                 String vietnamese = line.path("vietnamese").asText("").trim();
-                if (index < 0 || index >= expectedLines || vietnamese.isBlank()) {
+                if (!expectedIndexes.contains(index) || vietnamese.isBlank() || !returnedIndexes.add(index)) {
                     throw new IllegalStateException("Gemini returned an invalid subtitle translation");
                 }
                 result.add(new TranslationLine(index, vietnamese));
             }
             result.sort(Comparator.comparingInt(TranslationLine::index));
-            for (int index = 0; index < result.size(); index++) {
-                if (result.get(index).index() != index) throw new IllegalStateException("Gemini returned duplicate subtitle indexes");
-            }
             return result;
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("Gemini returned invalid translation JSON", exception);
         }
+    }
+
+    private Set<Integer> translationIndexes(List<TranslationGroup> groups) {
+        Set<Integer> indexes = new HashSet<>();
+        for (TranslationGroup group : groups) {
+            for (TranslationSourceLine line : group.lines()) {
+                if (line.index() < 0 || line.korean() == null || line.korean().isBlank() || !indexes.add(line.index())) {
+                    throw new IllegalArgumentException("Translation groups must contain unique, non-empty subtitle lines");
+                }
+            }
+        }
+        return indexes;
     }
 
     private List<TokenizationLine> parseTokenizationResponse(JsonNode response, int expectedLines) {
@@ -409,4 +430,10 @@ public class GeminiSubtitleService {
     public record AnalysisLine(int index, String vietnamese, List<Video.TokenizedWord> tokens) { }
     public record TranslationLine(int index, String vietnamese) { }
     public record TokenizationLine(int index, List<Video.TokenizedWord> tokens) { }
+    public record TranslationSourceLine(int index, String korean) { }
+    public record TranslationGroup(List<TranslationSourceLine> lines) {
+        public TranslationGroup {
+            lines = List.copyOf(lines);
+        }
+    }
 }

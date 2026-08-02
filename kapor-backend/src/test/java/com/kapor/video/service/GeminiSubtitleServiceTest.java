@@ -35,15 +35,23 @@ class GeminiSubtitleServiceTest {
     @Test
     void usesATranslationOnlySchemaForSubtitleTranslations() {
         GeminiSubtitleService service = new GeminiSubtitleService(WebClient.builder(), new ObjectMapper());
-        Video.SubtitleLine subtitle = Video.SubtitleLine.builder().text("안녕하세요").build();
+        List<GeminiSubtitleService.TranslationGroup> groups = List.of(new GeminiSubtitleService.TranslationGroup(List.of(
+                new GeminiSubtitleService.TranslationSourceLine(0, "안녕하세요. 저는 이 프로젝트 관리"),
+                new GeminiSubtitleService.TranslationSourceLine(1, "팀의 팀장 김민수입니다.")
+        )));
 
-        JsonNode body = ReflectionTestUtils.invokeMethod(service, "translationRequestBody", List.of(subtitle));
+        JsonNode body = ReflectionTestUtils.invokeMethod(service, "groupedTranslationRequestBody", groups);
         JsonNode lineProperties = body.path("generationConfig").path("responseJsonSchema")
                 .path("properties").path("lines").path("items").path("properties");
 
         assertThat(lineProperties.path("index").isObject()).isTrue();
         assertThat(lineProperties.path("vietnamese").isObject()).isTrue();
         assertThat(lineProperties.has("tokens")).isFalse();
+        String prompt = body.path("contents").path(0).path("parts").path(0).path("text").asText();
+        assertThat(prompt).contains("fragments of one spoken Korean sentence")
+                .contains("Never repeat words or meaning")
+                .contains("\"index\":0")
+                .contains("\"index\":1");
     }
 
     @Test

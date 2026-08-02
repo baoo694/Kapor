@@ -99,20 +99,65 @@ class VideoServiceSubtitleTest {
     @Test
     void aiTranslationCreatesVietnamesePairsWithoutTokenizingKorean() {
         AtomicReference<Video> saved = new AtomicReference<>();
+        AtomicReference<List<GeminiSubtitleService.TranslationGroup>> sentGroups = new AtomicReference<>();
         GeminiSubtitleService ai = new GeminiSubtitleService(null, null) {
             @Override
-            public List<TranslationLine> translate(List<Video.SubtitleLine> subtitles) {
-                return List.of(new TranslationLine(0, "Xin chào mọi người"));
+            public List<TranslationLine> translateGrouped(List<TranslationGroup> groups) {
+                sentGroups.set(groups);
+                return List.of(
+                        new TranslationLine(0, "Xin chào. Tôi là"),
+                        new TranslationLine(1, "Kim Min-su, trưởng nhóm quản lý dự án này.")
+                );
             }
         };
         VideoService service = serviceFor(Video.builder().id("video-1").build(), saved, ai);
         SubtitleTranslateRequest request = new SubtitleTranslateRequest();
-        request.setKoreanSubtitles(List.of(line(0, 2, "안녕하세요 여러분")));
+        request.setKoreanSubtitles(List.of(
+                line(0, 1, "안녕하세요. 저는 이 프로젝트 관리"),
+                line(1.1, 2, "팀의 팀장 김민수입니다.")
+        ));
 
         VideoDto result = service.translateSubtitlesWithAi("video-1", request);
 
-        assertThat(result.getVietnameseSubtitles().get(0).getText()).isEqualTo("Xin chào mọi người");
+        assertThat(sentGroups.get()).hasSize(1);
+        assertThat(sentGroups.get().get(0).lines()).hasSize(2);
+        assertThat(result.getVietnameseSubtitles())
+                .extracting(Video.SubtitleLine::getText)
+                .containsExactly("Xin chào. Tôi là", "Kim Min-su, trưởng nhóm quản lý dự án này.");
+        assertThat(result.getVietnameseSubtitles())
+                .extracting(Video.SubtitleLine::getStart)
+                .containsExactly(0.0, 1.1);
         assertThat(result.getKoreanSubtitles().get(0).getTokens()).isEmpty();
+    }
+
+    @Test
+    void groupsConsecutiveSrtCuesUntilTheKoreanSentenceEndsWithoutChangingIndexes() {
+        List<GeminiSubtitleService.TranslationGroup> groups = VideoService.groupSubtitlesForTranslation(List.of(
+                line(0, 1, "안녕하세요. 저는 이 프로젝트 관리"),
+                line(1.1, 2.2, "팀의 팀장 김민수입니다."),
+                line(2.4, 3.2, "안녕하세요. 팀장님. 만나서"),
+                line(3.3, 4.0, "반갑습니다.")
+        ));
+
+        assertThat(groups).hasSize(2);
+        assertThat(groups.get(0).lines())
+                .extracting(GeminiSubtitleService.TranslationSourceLine::index)
+                .containsExactly(0, 1);
+        assertThat(groups.get(1).lines())
+                .extracting(GeminiSubtitleService.TranslationSourceLine::index)
+                .containsExactly(2, 3);
+    }
+
+    @Test
+    void startsANewTranslationGroupAfterALongSilence() {
+        List<GeminiSubtitleService.TranslationGroup> groups = VideoService.groupSubtitlesForTranslation(List.of(
+                line(0, 1, "이 문장은 아직"),
+                line(2.2, 3.1, "다음 장면입니다.")
+        ));
+
+        assertThat(groups).hasSize(2);
+        assertThat(groups.get(0).lines()).hasSize(1);
+        assertThat(groups.get(1).lines()).hasSize(1);
     }
 
     @Test

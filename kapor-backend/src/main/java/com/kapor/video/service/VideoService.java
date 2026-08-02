@@ -11,13 +11,22 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Value;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class VideoService {
+
+    private static final double MAX_TRANSLATION_GROUP_GAP_SECONDS = 1.0;
+    private static final int MAX_TRANSLATION_GROUP_LINES = 8;
+    private static final int MAX_TRANSLATION_GROUP_CHARACTERS = 180;
+    private static final Pattern KOREAN_SENTENCE_ENDING = Pattern.compile(
+            ".*(?:습니다|ㅂ니다|입니다|아요|어요|예요|이에요|세요|죠|네요|군요|랍니다|다|까|라)$");
 
     private final VideoRepository videoRepository;
     private final SubtitleTokenizer subtitleTokenizer;
@@ -120,26 +129,32 @@ public class VideoService {
         Video video = findVideo(id);
         List<Video.SubtitleLine> korean = request.getKoreanSubtitles();
         validateKoreanSubtitles(korean);
-        List<Video.SubtitleLine> vietnamese = new java.util.ArrayList<>();
+        List<String> translationsByIndex = new ArrayList<>(Collections.nCopies(korean.size(), null));
         int batchSize = Math.max(1, geminiSubtitleBatchSize);
 
-        for (int start = 0; start < korean.size(); start += batchSize) {
-            int end = Math.min(start + batchSize, korean.size());
-            List<Video.SubtitleLine> batch = korean.subList(start, end);
-            List<GeminiSubtitleService.TranslationLine> translations = geminiSubtitleService.translate(batch);
+        for (List<GeminiSubtitleService.TranslationGroup> batch : translationBatches(
+                groupSubtitlesForTranslation(korean), batchSize)) {
+            List<GeminiSubtitleService.TranslationLine> translations = geminiSubtitleService.translateGrouped(batch);
             for (GeminiSubtitleService.TranslationLine result : translations) {
-                Video.SubtitleLine koreanLine = batch.get(result.index());
-                vietnamese.add(Video.SubtitleLine.builder()
-                        .start(koreanLine.getStart())
-                        .end(koreanLine.getEnd())
-                        .text(result.vietnamese())
-                        .tokens(List.of())
-                        .build());
+                if (result.index() < 0 || result.index() >= korean.size()
+                        || translationsByIndex.set(result.index(), result.vietnamese()) != null) {
+                    throw new IllegalStateException("Gemini returned duplicate or invalid subtitle translations");
+                }
             }
         }
 
-        if (vietnamese.size() != korean.size()) {
+        if (translationsByIndex.stream().anyMatch(value -> value == null || value.isBlank())) {
             throw new IllegalStateException("Gemini did not return every subtitle translation");
+        }
+        List<Video.SubtitleLine> vietnamese = new ArrayList<>();
+        for (int index = 0; index < korean.size(); index++) {
+            Video.SubtitleLine koreanLine = korean.get(index);
+            vietnamese.add(Video.SubtitleLine.builder()
+                    .start(koreanLine.getStart())
+                    .end(koreanLine.getEnd())
+                    .text(translationsByIndex.get(index))
+                    .tokens(List.of())
+                    .build());
         }
         video.setKoreanSubtitles(korean);
         video.setVietnameseSubtitles(vietnamese);
@@ -219,6 +234,73 @@ public class VideoService {
 
     private String nonBlank(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    /**
+     * Creates temporary sentence-context groups for Gemini. The original SRT
+     * lines and their timestamps are deliberately not changed.
+     */
+    static List<GeminiSubtitleService.TranslationGroup> groupSubtitlesForTranslation(
+            List<Video.SubtitleLine> subtitles) {
+        List<GeminiSubtitleService.TranslationGroup> groups = new ArrayList<>();
+        List<GeminiSubtitleService.TranslationSourceLine> currentGroup = new ArrayList<>();
+        Video.SubtitleLine previous = null;
+        int currentCharacters = 0;
+
+        for (int index = 0; index < subtitles.size(); index++) {
+            Video.SubtitleLine line = subtitles.get(index);
+            boolean gapStartsNewGroup = previous != null
+                    && line.getStart() - previous.getEnd() > MAX_TRANSLATION_GROUP_GAP_SECONDS;
+            boolean groupIsFull = currentGroup.size() >= MAX_TRANSLATION_GROUP_LINES
+                    || currentCharacters + line.getText().length() > MAX_TRANSLATION_GROUP_CHARACTERS;
+            if (!currentGroup.isEmpty() && (gapStartsNewGroup || groupIsFull)) {
+                groups.add(new GeminiSubtitleService.TranslationGroup(currentGroup));
+                currentGroup = new ArrayList<>();
+                currentCharacters = 0;
+            }
+
+            currentGroup.add(new GeminiSubtitleService.TranslationSourceLine(index, line.getText().trim()));
+            currentCharacters += line.getText().length();
+            previous = line;
+
+            if (endsSpokenSentence(line.getText()) || currentGroup.size() >= MAX_TRANSLATION_GROUP_LINES
+                    || currentCharacters >= MAX_TRANSLATION_GROUP_CHARACTERS) {
+                groups.add(new GeminiSubtitleService.TranslationGroup(currentGroup));
+                currentGroup = new ArrayList<>();
+                currentCharacters = 0;
+            }
+        }
+        if (!currentGroup.isEmpty()) {
+            groups.add(new GeminiSubtitleService.TranslationGroup(currentGroup));
+        }
+        return groups;
+    }
+
+    private static boolean endsSpokenSentence(String text) {
+        String normalized = text == null ? "" : text.trim();
+        return normalized.endsWith(".") || normalized.endsWith("!") || normalized.endsWith("?")
+                || normalized.endsWith("…") || KOREAN_SENTENCE_ENDING.matcher(normalized).matches();
+    }
+
+    private static List<List<GeminiSubtitleService.TranslationGroup>> translationBatches(
+            List<GeminiSubtitleService.TranslationGroup> groups, int maxLinesPerBatch) {
+        List<List<GeminiSubtitleService.TranslationGroup>> batches = new ArrayList<>();
+        List<GeminiSubtitleService.TranslationGroup> currentBatch = new ArrayList<>();
+        int currentLineCount = 0;
+        for (GeminiSubtitleService.TranslationGroup group : groups) {
+            int groupLineCount = group.lines().size();
+            if (!currentBatch.isEmpty() && currentLineCount + groupLineCount > maxLinesPerBatch) {
+                batches.add(currentBatch);
+                currentBatch = new ArrayList<>();
+                currentLineCount = 0;
+            }
+            currentBatch.add(group);
+            currentLineCount += groupLineCount;
+        }
+        if (!currentBatch.isEmpty()) {
+            batches.add(currentBatch);
+        }
+        return batches;
     }
 
     private Video findVideo(String id) {
