@@ -499,6 +499,13 @@ class DevVocabService {
       final response = await _dio.post(
         '/summarizer/generate',
         data: {'input': input, 'maxCards': 8},
+        // Extracting an article and generating structured cards can take
+        // longer than the app-wide request timeout. Keep this scoped to the
+        // AI operation so regular screens still fail fast.
+        options: Options(
+          sendTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(seconds: 120),
+        ),
       );
       return SummarizerPreview.fromJson(
         _responseData(response.data, 'Không thể tạo flashcard.'),
