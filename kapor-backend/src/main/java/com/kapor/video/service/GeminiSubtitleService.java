@@ -23,12 +23,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.Semaphore;
+import java.util.regex.Pattern;
 
 /** Calls Gemini with a strict JSON schema for Korean subtitle translation and tokenization. */
 @Service
 @RequiredArgsConstructor
 public class GeminiSubtitleService {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(90);
+    private static final Pattern HANGUL = Pattern.compile("[\\p{IsHangul}]");
 
     private final WebClient.Builder webClientBuilder;
     private final ObjectMapper objectMapper;
@@ -330,7 +332,7 @@ public class GeminiSubtitleService {
                             .definitionEn(token.path("definitionEn").asText("").trim())
                             .exampleKo(token.path("exampleKo").asText("").trim())
                             .grammarNote(token.path("grammarNote").isNull() ? null : token.path("grammarNote").asText("").trim())
-                            .clickable(token.path("clickable").asBoolean(true))
+                            .clickable(isClickable(surface, token))
                             .build());
                 }
                 result.add(new AnalysisLine(index, vietnamese, tokens));
@@ -426,10 +428,19 @@ public class GeminiSubtitleService {
                     .definitionEn(token.path("definitionEn").asText("").trim())
                     .exampleKo(token.path("exampleKo").asText("").trim())
                     .grammarNote(token.path("grammarNote").isNull() ? null : token.path("grammarNote").asText("").trim())
-                    .clickable(token.path("clickable").asBoolean(true))
+                    .clickable(isClickable(surface, token))
                     .build());
         }
         return tokens;
+    }
+
+    /**
+     * Korean subtitle tokens must always be available for the word-detail sheet.
+     * Gemini can still mark non-Korean tokens as non-clickable, but it cannot
+     * suppress a token that contains Hangul.
+     */
+    private boolean isClickable(String surface, JsonNode token) {
+        return HANGUL.matcher(surface).find() || token.path("clickable").asBoolean(true);
     }
 
     private GeminiApiException geminiError(HttpStatusCode status, JsonNode body) {

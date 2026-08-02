@@ -93,11 +93,6 @@ export type AdminScenarioPayload = {
   active: boolean;
 };
 
-export type AdminDictionaryPayload = {
-  id?: string; korean: string; pronunciation?: string; vietnamese: string; english?: string;
-  domain?: string; hanja?: string; frequency?: string; searchCount?: number;
-};
-
 export type AdminPronunciationPayload = {
   id?: string; title: string; titleVi?: string; domain: string; difficulty: string; order: number;
   sentences: { text: string; translationVi?: string; audioUrl?: string; waveformData?: number[] }[];
@@ -404,12 +399,6 @@ export const api = {
   createScenario: async (data: AdminScenarioPayload) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/scenarios`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) })),
   updateScenario: async (id: string, data: AdminScenarioPayload) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/scenarios/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) })),
   deleteScenario: async (id: string) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/scenarios/${id}`, { method: 'DELETE', headers: getHeaders() })),
-
-  getDictionary: async (query = ''): Promise<AdminDictionaryPayload[]> => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/dictionary${query ? `?query=${encodeURIComponent(query)}` : ''}`, { headers: getHeaders() })),
-  createDictionary: async (data: AdminDictionaryPayload) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/dictionary`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) })),
-  updateDictionary: async (id: string, data: AdminDictionaryPayload) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/dictionary/${id}`, { method: 'PUT', headers: getHeaders(), body: JSON.stringify(data) })),
-  deleteDictionary: async (id: string) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/dictionary/${id}`, { method: 'DELETE', headers: getHeaders() })),
-  importDictionary: async (data: AdminDictionaryPayload[]) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/dictionary/import`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) })),
 
   getPronunciationExercises: async (): Promise<AdminPronunciationPayload[]> => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/pronunciation-exercises`, { headers: getHeaders() })),
   createPronunciationExercise: async (data: AdminPronunciationPayload) => handleResponse(await fetchWithAuth(`${API_BASE}/api/admin/pronunciation-exercises`, { method: 'POST', headers: getHeaders(), body: JSON.stringify(data) })),

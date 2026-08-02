@@ -7,13 +7,11 @@ from tempfile import NamedTemporaryFile
 from threading import Lock
 import logging
 import os
-import mecab
 
 app = FastAPI(title="Kapor NLP Service")
 logger = logging.getLogger(__name__)
 
-# WhisperX is intentionally loaded on the first pronunciation request so the
-# existing tokenizer endpoints can start quickly. Its ASR and Korean forced
+# WhisperX is loaded on pronunciation request. Its ASR and Korean forced
 # alignment models are cached in the Docker volume.
 _whisperx_model = None
 _whisperx_align_model = None
@@ -30,25 +28,6 @@ WHISPERX_COMPUTE_TYPE = os.getenv("WHISPERX_COMPUTE_TYPE", os.getenv("WHISPER_CO
 WHISPERX_VAD_METHOD = os.getenv("WHISPERX_VAD_METHOD", "silero")
 WHISPERX_BATCH_SIZE = int(os.getenv("WHISPERX_BATCH_SIZE", "1"))
 
-# Initialize Mecab tokenizer for Korean
-try:
-    m = mecab.MeCab()
-except Exception as e:
-    print(f"Failed to initialize MeCab: {e}")
-    m = None
-
-class TokenizeRequest(BaseModel):
-    text: str
-
-class Token(BaseModel):
-    surface: str
-    stem: str
-    pos: str
-    isContentWord: bool
-
-class TokenizeResponse(BaseModel):
-    tokens: List[Token]
-
 class TranscribedWord(BaseModel):
     text: str
     startSeconds: Optional[float] = None
@@ -61,46 +40,14 @@ class WhisperTranscriptionResponse(BaseModel):
     durationSeconds: float
     words: List[TranscribedWord]
 
-CONTENT_POS_TAGS = {"NNG", "NNP", "VV", "VA", "MAG", "SL", "SH"}
-
 @app.get("/health")
 def health_check():
     return {
         "status": "ok",
-        "mecab_initialized": m is not None,
         "whisperx_model": WHISPERX_MODEL_NAME,
         "whisperx_vad_method": WHISPERX_VAD_METHOD,
         "whisperx_loaded": _whisperx_model is not None,
     }
-
-@app.post("/tokenize", response_model=TokenizeResponse)
-def tokenize_text(request: TokenizeRequest):
-    if not m:
-        raise HTTPException(status_code=500, detail="Mecab is not initialized")
-    
-    parsed_nodes = m.parse(request.text)
-    
-    tokens = []
-    for node in parsed_nodes:
-        # node structure depends on mecab-ko wrapper, usually: surface, feature (POS, semantic, etc.)
-        surface = node[0]
-        feature = node[1].split(',')
-        pos = feature[0]
-        
-        # Stem extraction (if available, otherwise fallback to surface)
-        stem = feature[7] if len(feature) > 7 and feature[7] != '*' else surface
-        
-        # Is content word?
-        is_content_word = any(pos.startswith(tag) for tag in CONTENT_POS_TAGS)
-        
-        tokens.append(Token(
-            surface=surface,
-            stem=stem.split('/')[0], # Handle cases where stem has multiple parts separated by /
-            pos=pos,
-            isContentWord=is_content_word
-        ))
-        
-    return TokenizeResponse(tokens=tokens)
 
 def get_whisperx_models():
     global _whisperx_model, _whisperx_align_model, _whisperx_align_metadata

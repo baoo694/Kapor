@@ -1,8 +1,6 @@
 fastapi==0.109.2
 uvicorn==0.27.1
 pydantic==2.6.1
-konlpy==0.6.0
-python-mecab-ko==1.3.3
 # WhisperX provides the Korean forced-alignment timestamps used by the mobile timeline.
 # Pin it so a model/runtime change is reviewed against our timing fixtures.
 whisperx==3.4.2

@@ -32,11 +32,6 @@ db.videos.createIndex({ youtubeVideoId: 1 }, { unique: true });
 db.videos.createIndex({ tags: 1 });
 db.videos.createIndex({ createdAt: -1 });
 
-// Dictionary
-db.dictionary.createIndex({ korean: 1 }, { unique: true });
-db.dictionary.createIndex({ stem: 1 });
-db.dictionary.createIndex({ "meanings.domain": 1 });
-
 // Decks
 db.decks.createIndex({ userId: 1 });
 db.decks.createIndex({ userId: 1, domain: 1 });

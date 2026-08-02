@@ -7,7 +7,6 @@ import {
   type AdminTopicPayload,
   type AdminVideoPayload,
   type AdminScenarioPayload,
-  type AdminDictionaryPayload,
   type AdminPronunciationPayload,
   type AdminPromptPayload,
   type LessonExercisePayload,
@@ -1574,7 +1573,7 @@ function TabBar({ active, nav, lang }: { active: Screen; nav: (s: Screen) => voi
 
 type AdminSection =
   | "dashboard" | "users" | "users-detail"
-  | "content-topics" | "content-lessons" | "content-videos" | "content-scenarios" | "content-dictionary" | "content-dictionary-import" | "content-pronunciation"
+  | "content-topics" | "content-lessons" | "content-videos" | "content-scenarios" | "content-pronunciation"
   | "analytics" | "analytics-users" | "analytics-content" | "analytics-ai"
   | "settings-prompts" | "settings-admins";
 
@@ -1708,7 +1707,6 @@ function AdminPanel({ lang }: { lang: Lang }) {
   const [lessonFilterTopicId, setLessonFilterTopicId] = useState("");
   const [videos, setVideos] = useState<AdminVideoPayload[]>([]);
   const [adminScenariosData, setAdminScenariosData] = useState<AdminScenarioPayload[]>([]);
-  const [dictionaryEntries, setDictionaryEntries] = useState<AdminDictionaryPayload[]>([]);
   const [pronunciationExerciseData, setPronunciationExerciseData] = useState<AdminPronunciationPayload[]>([]);
   const [promptTemplates, setPromptTemplates] = useState<AdminPromptPayload[]>([]);
   const [adminUsersData, setAdminUsersData] = useState<any[]>([]);
@@ -1716,12 +1714,12 @@ function AdminPanel({ lang }: { lang: Lang }) {
 
   const loadAdminData = async () => {
     try {
-      const [dashboard, videoRows, scenarioRows, dictionaryRows, pronunciationRows, promptRows, admins] = await Promise.all([
-        api.getDashboardStats(), api.getVideos(), api.getScenarios(), api.getDictionary(),
-        api.getPronunciationExercises(), api.getPrompts(), api.getAdmins(),
+      const [dashboard, videoRows, scenarioRows, pronunciationRows, promptRows, admins] = await Promise.all([
+        api.getDashboardStats(), api.getVideos(), api.getScenarios(), api.getPronunciationExercises(),
+        api.getPrompts(), api.getAdmins(),
       ]);
       setStats(dashboard); setVideos(videoRows); setAdminScenariosData(scenarioRows);
-      setDictionaryEntries(dictionaryRows); setPronunciationExerciseData(pronunciationRows);
+      setPronunciationExerciseData(pronunciationRows);
       setPromptTemplates(promptRows);
       setSelectedPrompt(current => current ?? promptRows[0] ?? null);
       setPromptContent(current => current || promptRows[0]?.content || "");
@@ -1818,13 +1816,11 @@ function AdminPanel({ lang }: { lang: Lang }) {
   const [lessonFormError, setLessonFormError] = useState("");
   const [lessonSaving, setLessonSaving] = useState(false);
   const [showAddScenario, setShowAddScenario] = useState(false);
-  const [showAddDict, setShowAddDict] = useState(false);
   const [showAddPron, setShowAddPron] = useState(false);
   const [scenarioForm, setScenarioForm] = useState<AdminScenarioPayload>(emptyScenarioForm);
   const [editingScenarioId, setEditingScenarioId] = useState<string | null>(null);
   const [scenarioSaving, setScenarioSaving] = useState(false);
   const [scenarioFormError, setScenarioFormError] = useState("");
-  const [dictionaryForm, setDictionaryForm] = useState<AdminDictionaryPayload>({ korean: "", pronunciation: "", vietnamese: "", domain: "backend", hanja: "", frequency: "medium" });
   const [pronunciationForm, setPronunciationForm] = useState<AdminPronunciationPayload>({ title: "", titleVi: "", domain: "backend", difficulty: "beginner", order: 0, sentences: [{ text: "", translationVi: "", audioUrl: "" }] });
   const [videoForm, setVideoForm] = useState<AdminVideoPayload>({ title: "", titleVi: "", youtubeUrl: "", domain: "backend", difficulty: "beginner", durationSeconds: 0, koreanSubtitles: [], vietnameseSubtitles: [], quizMarkers: [] });
   const [videoSaving, setVideoSaving] = useState(false);
@@ -1839,7 +1835,6 @@ function AdminPanel({ lang }: { lang: Lang }) {
   const [promptContent, setPromptContent] = useState("");
   const [promptSaving, setPromptSaving] = useState(false);
   const [promptError, setPromptError] = useState("");
-  const [dictSearch, setDictSearch] = useState("");
   const [inviteEmail, setInviteEmail] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -1934,27 +1929,6 @@ function AdminPanel({ lang }: { lang: Lang }) {
   const [analyticsTab, setAnalyticsTab] = useState<"overview" | "users" | "content" | "ai">("overview");
   const [lessonEditorTab, setLessonEditorTab] = useState<"vocab" | "exercises" | "preview">("vocab");
   const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
-  const [dictImportStep, setDictImportStep] = useState<"upload" | "preview">("upload");
-  const [dictImportRows, setDictImportRows] = useState<AdminDictionaryPayload[]>([]);
-  const [dictImportError, setDictImportError] = useState("");
-  const dictFileInputRef = useRef<HTMLInputElement>(null);
-
-  const readDictionaryFile = async (file?: File) => {
-    if (!file) return;
-    try {
-      const text = await file.text();
-      const rows: AdminDictionaryPayload[] = file.name.toLowerCase().endsWith(".json")
-        ? JSON.parse(text)
-        : (() => {
-            const [header, ...values] = text.trim().split(/\r?\n/).filter(Boolean).map(line => line.split(",").map(value => value.trim()));
-            const index = (name: string) => header.indexOf(name);
-            return values.map(value => ({ korean: value[index("korean")] ?? "", pronunciation: value[index("pronunciation")] ?? "", vietnamese: value[index("vietnamese")] ?? "", domain: value[index("domain")] ?? "", hanja: value[index("hanja")] ?? "", frequency: value[index("frequency")] ?? "medium" }));
-          })();
-      if (!Array.isArray(rows) || !rows.length || rows.some(row => !row.korean || !row.vietnamese)) throw new Error("File must contain korean and vietnamese for every entry.");
-      setDictImportRows(rows.slice(0, 10000)); setDictImportError(""); setDictImportStep("preview");
-    } catch (error) { setDictImportError(error instanceof Error ? error.message : "Unable to read import file."); }
-  };
-
   const fetchTopics = async () => {
     setTopicsLoading(true);
     setTopicsError("");
@@ -2401,10 +2375,10 @@ function AdminPanel({ lang }: { lang: Lang }) {
 
   const navTo = (s: AdminSection) => {
     setSection(s); setShowSubEditor(false); setShowAddVideo(false); setShowAddTopic(false);
-    setShowAddLesson(false); setShowAddScenario(false); setShowAddDict(false); setShowAddPron(false);
+    setShowAddLesson(false); setShowAddScenario(false); setShowAddPron(false);
     if (testSessionId) void api.abandonRoleplayTest(testSessionId).catch(() => undefined);
     setTestScenario(null); setTestSessionId(null); setSelectedUserId(null); setVideoBulkSelected(new Set());
-    setDictImportStep("upload"); setEditingLessonId(null); setLessonEditorTab("vocab");
+    setEditingLessonId(null); setLessonEditorTab("vocab");
     setEditingTopicId(null); setEditingScenarioId(null); setScenarioFormError(""); setTopicFormError("");
     if (s === "analytics") setAnalyticsTab("overview");
   };
@@ -2500,8 +2474,6 @@ function AdminPanel({ lang }: { lang: Lang }) {
                 <SideItem id="content-lessons" icon={BookOpen} label="Lessons" indent />
                 <SideItem id="content-videos" icon={Video} label="Videos" indent />
                 <SideItem id="content-scenarios" icon={MessageSquare} label="Scenarios" indent />
-                <SideItem id="content-dictionary" icon={Globe} label="Dictionary" indent />
-                <SideItem id="content-dictionary-import" icon={Plus} label="↳ Bulk Import" indent />
                 <SideItem id="content-pronunciation" icon={Mic} label="Pronunciation" indent />
               </>
             )}
@@ -3141,47 +3113,6 @@ function AdminPanel({ lang }: { lang: Lang }) {
           </div>
         )}
 
-        {section === "content-dictionary" && (
-          <div>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-              <h1 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 24, color: "oklch(0.92 0.01 250)", margin: 0 }}>Dictionary</h1>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => setShowAddDict(v => !v)} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}>
-                  <Plus size={15} /> Add Entry
-                </button>
-                <button style={{ padding: "8px 14px", borderRadius: 10, border: `1px solid ${TEAL}40`, background: `${TEAL}10`, color: TEAL, fontFamily: "Outfit, sans-serif", fontSize: 13, cursor: "pointer" }}>Import CSV</button>
-              </div>
-            </div>
-            <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-              <input value={dictSearch} onChange={e => setDictSearch(e.target.value)} placeholder="Search Korean terms..." style={{ flex: 1, padding: "10px 14px", borderRadius: 10, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.85 0.01 250)", fontFamily: "Inter, sans-serif", fontSize: 13, outline: "none" }} />
-            </div>
-            {showAddDict && (
-              <form onSubmit={async event => { event.preventDefault(); const saved = await api.createDictionary(dictionaryForm); setDictionaryEntries(rows => [...rows, saved]); setShowAddDict(false); }} style={{ borderRadius: 14, padding: 20, background: "oklch(0.13 0.025 250)", border: `1px solid ${TEAL}30`, marginBottom: 20 }}>
-                <p style={{ fontSize: 11, color: TEAL, fontFamily: "JetBrains Mono, monospace", letterSpacing: 1, margin: "0 0 14px" }}>NEW DICTIONARY ENTRY</p>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>{[["korean", "Korean"], ["pronunciation", "Pronunciation"], ["vietnamese", "Vietnamese"], ["domain", "Domain"], ["hanja", "Hanja"], ["frequency", "Frequency"]].map(([field, label]) => <input key={field} required={field === "korean" || field === "vietnamese"} value={(dictionaryForm as any)[field] ?? ""} placeholder={label} onChange={event => setDictionaryForm(current => ({ ...current, [field]: event.target.value }))} style={{ padding: "10px", borderRadius: 8, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "white" }} />)}</div>
-                <div style={{ display: "flex", gap: 10, marginTop: 14 }}><button type="submit" style={{ padding: "9px 20px", border: "none", borderRadius: 9, background: TEAL }}>Save</button><button type="button" onClick={() => setShowAddDict(false)} style={{ padding: "9px 20px", borderRadius: 9 }}>Cancel</button></div>
-              </form>
-            )}
-            <AdminTable headers={["Korean", "Pronunciation", "Vietnamese", "Domain", "Frequency", ""]}>
-              {dictionaryEntries.filter(d => d.korean.includes(dictSearch) || d.vietnamese.toLowerCase().includes(dictSearch.toLowerCase())).map(d => (
-                <TR key={d.id}>
-                  <td style={{ padding: "12px 16px" }}><span style={{ fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 18, color: TEAL }}>{d.korean}</span></td>
-                  <AdminTd mono>/{d.pronunciation}/</AdminTd>
-                  <AdminTd>{d.vietnamese}</AdminTd>
-                  <td style={{ padding: "12px 16px" }}><KBadge color={domainColor(d.domain)}>{d.domain}</KBadge></td>
-                  <td style={{ padding: "12px 16px" }}>
-                    <span style={{ padding: "2px 8px", borderRadius: 999, fontSize: 10, fontFamily: "JetBrains Mono, monospace", background: d.frequency === "high" ? `${TEAL}20` : "oklch(0.20 0.03 250)", color: d.frequency === "high" ? TEAL : "oklch(0.50 0.03 250)", border: `1px solid ${d.frequency === "high" ? `${TEAL}44` : "oklch(0.25 0.03 250)"}` }}>{d.frequency}</span>
-                  </td>
-                  <td style={{ padding: "12px 16px", display: "flex", gap: 6 }}>
-                    <button style={{ padding: "5px 10px", borderRadius: 7, border: `1px solid ${TEAL}44`, background: `${TEAL}10`, color: TEAL, fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Edit</button>
-                    <button style={{ padding: "5px 10px", borderRadius: 7, border: "1px solid #f8717144", background: "#f8717110", color: "#f87171", fontFamily: "JetBrains Mono, monospace", fontSize: 11, cursor: "pointer" }}>Delete</button>
-                  </td>
-                </TR>
-              ))}
-            </AdminTable>
-            <p style={{ fontSize: 11, color: "oklch(0.38 0.03 250)", fontFamily: "JetBrains Mono, monospace", marginTop: 12 }}>{dictionaryEntries.length} entries total</p>
-          </div>
-        )}
 
         {section === "content-pronunciation" && (
           <div>
@@ -3218,94 +3149,6 @@ function AdminPanel({ lang }: { lang: Lang }) {
                 </TR>
               ))}
             </AdminTable>
-          </div>
-        )}
-
-        {section === "content-dictionary-import" && (
-          <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
-              <button onClick={() => setSection("content-dictionary")} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: "oklch(0.45 0.03 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 12, padding: 0 }}>
-                <ChevronLeft size={14} /> Dictionary
-              </button>
-              <span style={{ color: "oklch(0.30 0.03 250)" }}>/</span>
-              <h1 style={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: 24, color: "oklch(0.92 0.01 250)", margin: 0 }}>Bulk Import</h1>
-            </div>
-            {dictImportStep === "upload" && (
-              <div>
-                <div style={{ borderRadius: 14, padding: 40, background: "oklch(0.13 0.025 250)", border: `2px dashed ${TEAL}44`, textAlign: "center", marginBottom: 20 }}>
-                  <div style={{ width: 48, height: 48, borderRadius: 12, background: `${TEAL}15`, border: `1px solid ${TEAL}30`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
-                    <Plus size={22} color={TEAL} />
-                  </div>
-                  <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 600, fontSize: 16, color: "oklch(0.82 0.01 250)", margin: "0 0 6px" }}>Drop CSV or JSON file here</p>
-                  <p style={{ fontSize: 12, color: "oklch(0.42 0.03 250)", margin: "0 0 20px" }}>Supports .csv and .json formats. Max 10,000 entries per upload.</p>
-                  <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
-                    <input ref={dictFileInputRef} type="file" accept=".csv,.json,application/json,text/csv" onChange={event => void readDictionaryFile(event.target.files?.[0])} style={{ display: "none" }} />
-                    <button onClick={() => dictFileInputRef.current?.click()} style={{ padding: "9px 20px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Browse Files</button>
-                  </div>
-                  {dictImportError && <p style={{ color: "#f87171", fontSize: 12 }}>{dictImportError}</p>}
-                </div>
-                <div style={{ borderRadius: 14, padding: 20, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.20 0.03 250)", marginBottom: 20 }}>
-                  <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 600, fontSize: 14, color: "oklch(0.82 0.01 250)", margin: "0 0 12px" }}>Expected CSV Format</p>
-                  <code style={{ display: "block", fontFamily: "JetBrains Mono, monospace", fontSize: 12, color: TEAL, background: "oklch(0.09 0.02 250)", padding: 14, borderRadius: 8, lineHeight: 1.8 }}>
-                    korean,pronunciation,vietnamese,domain,hanja,frequency<br />
-                    빌드,bild-eu,Build / Biên dịch,devops,,high<br />
-                    테스트,te-seu-teu,Kiểm thử,backend,,medium
-                  </code>
-                </div>
-              </div>
-            )}
-            {dictImportStep === "preview" && (
-              <div>
-                <div style={{ borderRadius: 14, padding: 16, background: `${TEAL}10`, border: `1px solid ${TEAL}30`, marginBottom: 20, display: "flex", alignItems: "center", gap: 12 }}>
-                  <CheckCircle size={18} color={TEAL} />
-                  <p style={{ fontSize: 13, color: TEAL, fontFamily: "Inter, sans-serif", margin: 0 }}>
-                    <strong>{dictImportRows.length} entries detected</strong> — Review below before importing.
-                  </p>
-                </div>
-                <div style={{ borderRadius: 14, padding: 16, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.20 0.03 250)", marginBottom: 16 }}>
-                  <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 600, fontSize: 14, color: "oklch(0.82 0.01 250)", margin: "0 0 12px" }}>Column Mapping</p>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-                    {[["Korean", "korean"], ["Pronunciation", "pronunciation"], ["Vietnamese", "vietnamese"], ["Domain", "domain"], ["Hanja", "hanja"], ["Frequency", "frequency"]].map(([label, val]) => (
-                      <div key={label}>
-                        <p style={{ fontSize: 10, color: "oklch(0.42 0.03 250)", fontFamily: "JetBrains Mono, monospace", margin: "0 0 4px" }}>{label.toUpperCase()}</p>
-                        <select defaultValue={val} style={{ width: "100%", padding: "8px 10px", borderRadius: 7, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.22 0.03 250)", color: "oklch(0.75 0.01 250)", fontFamily: "JetBrains Mono, monospace", fontSize: 11, outline: "none" }}>
-                          <option value={val}>{val}</option>
-                          <option value="—">— skip —</option>
-                        </select>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div style={{ borderRadius: 14, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.20 0.03 250)", overflow: "hidden", marginBottom: 20 }}>
-                  <div style={{ padding: "12px 16px", borderBottom: "1px solid oklch(0.18 0.03 250)" }}>
-                    <p style={{ fontSize: 13, color: "oklch(0.82 0.01 250)", fontFamily: "Outfit, sans-serif", fontWeight: 600, margin: 0 }}>Preview (first 5 rows)</p>
-                  </div>
-                  <table style={{ width: "100%", borderCollapse: "collapse" }}>
-                    <thead>
-                      <tr style={{ borderBottom: "1px solid oklch(0.18 0.03 250)" }}>
-                        {["Korean", "Pronunciation", "Vietnamese", "Domain"].map(h => (
-                          <th key={h} style={{ padding: "10px 16px", textAlign: "left", fontSize: 10, color: "oklch(0.42 0.03 250)", fontFamily: "JetBrains Mono, monospace", letterSpacing: 1, fontWeight: 600 }}>{h.toUpperCase()}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dictImportRows.slice(0, 5).map((entry, i) => (
-                        <tr key={i} style={{ borderBottom: "1px solid oklch(0.15 0.025 250)" }}>
-                          <td style={{ padding: "10px 16px" }}><span style={{ fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 15, color: TEAL }}>{entry.korean}</span></td>
-                          <td style={{ padding: "10px 16px", fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: "oklch(0.50 0.03 250)" }}>/{entry.pronunciation}/</td>
-                          <td style={{ padding: "10px 16px", fontSize: 12, color: "oklch(0.75 0.01 250)" }}>{entry.vietnamese}</td>
-                          <td style={{ padding: "10px 16px" }}><KBadge color={domainColor(entry.domain)}>{entry.domain}</KBadge></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <button onClick={async () => { const saved = await api.importDictionary(dictImportRows); setDictionaryEntries(current => [...current, ...saved]); setDictImportStep("upload"); setDictImportRows([]); setSection("content-dictionary"); }} style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: TEAL, color: "#000", fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 14, cursor: "pointer" }}>Import {dictImportRows.length} Entries</button>
-                  <button onClick={() => setDictImportStep("upload")} style={{ padding: "10px 24px", borderRadius: 10, border: "1px solid oklch(0.25 0.03 250)", background: "none", color: "oklch(0.55 0.03 250)", fontFamily: "Outfit, sans-serif", fontSize: 14, cursor: "pointer" }}>Back</button>
-                </div>
-              </div>
-            )}
           </div>
         )}
 
@@ -3394,7 +3237,7 @@ function AdminPanel({ lang }: { lang: Lang }) {
               <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 600, fontSize: 14, color: "oklch(0.82 0.01 250)", margin: "0 0 12px" }}>Role Permissions</p>
               {[
                 { role: "super_admin", color: AMBER, perms: "Full access: users, content, analytics, settings, admin management" },
-                { role: "content_admin", color: TEAL, perms: "Content CRUD (topics, lessons, videos, scenarios, dictionary, pronunciation). No user management." },
+                { role: "content_admin", color: TEAL, perms: "Content CRUD (topics, lessons, videos, scenarios, pronunciation). No user management." },
                 { role: "analytics_viewer", color: "#60a5fa", perms: "Read-only access to analytics dashboard. No content editing." },
               ].map(r => (
                 <div key={r.role} style={{ display: "flex", gap: 12, marginBottom: 10, padding: "10px 14px", borderRadius: 10, background: "oklch(0.10 0.02 250)", border: "1px solid oklch(0.16 0.03 250)" }}>
@@ -3711,17 +3554,6 @@ function AdminPanel({ lang }: { lang: Lang }) {
                     <Bar key="b" dataKey="completions" fill={TEAL} radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
-              </div>
-              <div style={{ borderRadius: 14, padding: 20, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.20 0.03 250)" }}>
-                <p style={{ fontFamily: "Outfit, sans-serif", fontWeight: 600, fontSize: 14, color: "oklch(0.82 0.01 250)", margin: "0 0 8px" }}>Most Searched Words</p>
-                {[...dictionaryEntries].sort((a, b) => (b.searchCount ?? 0) - (a.searchCount ?? 0)).slice(0, 5).map((item, i) => (
-                  <div key={item.word} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                    <span style={{ width: 20, fontFamily: "JetBrains Mono, monospace", fontSize: 10, color: "oklch(0.35 0.03 250)" }}>#{i + 1}</span>
-                    <span style={{ flex: 1, fontFamily: "Outfit, sans-serif", fontWeight: 700, fontSize: 14, color: TEAL }}>{item.word}</span>
-                    <div style={{ height: 6, width: `${Math.min(100, item.searchCount ?? 0)}px`, background: `${TEAL}44`, borderRadius: 3 }} />
-                    <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 11, color: "oklch(0.50 0.03 250)", minWidth: 30 }}>{item.searchCount ?? 0}</span>
-                  </div>
-                ))}
               </div>
             </div>
             <div style={{ borderRadius: 14, background: "oklch(0.13 0.025 250)", border: "1px solid oklch(0.20 0.03 250)", overflow: "hidden" }}>

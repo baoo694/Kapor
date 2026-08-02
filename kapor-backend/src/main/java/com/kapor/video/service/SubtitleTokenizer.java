@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
  * It intentionally does not claim to perform Korean morphological analysis; a
  * dedicated Korean NLP provider can replace this component without changing the
  * admin API.  Punctuation is discarded and Korean lexical units remain
- * clickable for dictionary lookup.
+ * clickable for the learner's word-detail sheet.
  */
 @Component
 public class SubtitleTokenizer {

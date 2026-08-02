@@ -2,15 +2,11 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies required for mecab-ko
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     curl \
     ffmpeg \
-    g++ \
-    make \
     patchelf \
-    xz-utils \
-    sudo \
     && rm -rf /var/lib/apt/lists/*
 
 

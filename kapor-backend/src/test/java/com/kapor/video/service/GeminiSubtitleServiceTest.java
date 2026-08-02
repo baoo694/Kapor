@@ -68,4 +68,18 @@ class GeminiSubtitleServiceTest {
         assertThat(lineProperties.has("vietnamese")).isFalse();
         assertThat(tokenProperties.path("exampleKo").isObject()).isTrue();
     }
+
+    @Test
+    void makesEveryHangulTokenClickableEvenWhenGeminiMarksItOtherwise() throws Exception {
+        GeminiSubtitleService service = new GeminiSubtitleService(WebClient.builder(), new ObjectMapper());
+        JsonNode tokens = new ObjectMapper().readTree("""
+                [{"surface":"학교에서","clickable":false}, {"surface":"API","clickable":false}]
+                """);
+
+        @SuppressWarnings("unchecked")
+        List<Video.TokenizedWord> parsed = (List<Video.TokenizedWord>) ReflectionTestUtils.invokeMethod(
+                service, "parseTokens", tokens);
+
+        assertThat(parsed).extracting(Video.TokenizedWord::isClickable).containsExactly(true, false);
+    }
 }

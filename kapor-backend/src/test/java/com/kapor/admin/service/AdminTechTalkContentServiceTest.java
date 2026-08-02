@@ -2,7 +2,6 @@ package com.kapor.admin.service;
 
 import com.kapor.admin.model.AdminPrompt;
 import com.kapor.admin.repository.AdminPromptRepository;
-import com.kapor.dictionary.repository.DictionaryEntryRepository;
 import com.kapor.pronunciation.repository.PronunciationExerciseRepository;
 import com.kapor.techtalk.dto.AdminScenarioRequest;
 import com.kapor.techtalk.model.TechTalkScenario;
@@ -29,7 +28,6 @@ class AdminTechTalkContentServiceTest {
             scenarioRepository,
             sessionRepository,
             mock(PronunciationExerciseRepository.class),
-            mock(DictionaryEntryRepository.class),
             promptRepository);
 
     @Test
