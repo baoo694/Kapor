@@ -11,6 +11,17 @@ class TechTalkStrings {
       ? 'No scenario is available. Add one in the Admin Panel.'
       : 'Chưa có scenario. Hãy thêm nội dung từ Admin Panel.';
   String get history => en ? 'History' : 'Lịch sử';
+  String get transcript => en ? 'Chat transcript' : 'Đoạn chat';
+  String get viewTranscript =>
+      en ? 'View chat transcript' : 'Xem lại đoạn chat';
+  String get readOnly => en ? 'Read-only' : 'Chỉ xem';
+  String get transcriptDescription => en
+      ? 'This is a saved copy of the conversation. You cannot send new messages here.'
+      : 'Đây là bản lưu cuộc hội thoại. Bạn không thể gửi thêm tin nhắn tại đây.';
+  String get emptyTranscript => en
+      ? 'This session has no saved messages.'
+      : 'Phiên này chưa có đoạn chat được lưu.';
+  String get voiceMessage => en ? 'Voice message' : 'Tin nhắn giọng nói';
   String get mission => en ? 'Mission' : 'Nhiệm vụ';
   String get end => en ? 'End' : 'Kết thúc';
   String get abandon => en ? 'Abandon' : 'Rời phiên';
@@ -31,6 +42,7 @@ class TechTalkStrings {
   String get retry => en ? 'Retry' : 'Thử lại';
   String get evaluationUnavailable =>
       en ? 'Evaluation unavailable' : 'Chưa thể chấm lượt này';
+  String get technicalError => en ? 'Diagnostic code' : 'Mã chẩn đoán';
   String get allObjectivesCompletedTitle =>
       en ? 'Mission completed' : 'Đã hoàn thành mục tiêu';
   String get allObjectivesCompletedMessage => en

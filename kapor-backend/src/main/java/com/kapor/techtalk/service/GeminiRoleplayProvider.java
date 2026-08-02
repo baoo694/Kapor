@@ -24,12 +24,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.TimeoutException;
 
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class GeminiRoleplayProvider implements RoleplayAiProvider {
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(45);
     private static final Set<String> CORRECTION_TYPES = Set.of(
             "particle", "honorific", "vocabulary", "grammar", "verb_ending", "pronoun", "formality");
 
@@ -48,6 +48,12 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
     @Value("${techtalk.ai.max-output-tokens:512}")
     private int maxOutputTokens;
 
+    @Value("${techtalk.ai.request-timeout-seconds:45}")
+    private int requestTimeoutSeconds;
+
+    @Value("${techtalk.ai.final-transcript-max-characters:30000}")
+    private int finalTranscriptMaxCharacters;
+
     @Override
     public Flux<String> streamReply(RoleplayContext context) {
         if (!configured()) return Flux.error(notConfigured());
@@ -65,17 +71,13 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, response -> response.bodyToMono(String.class)
                         .defaultIfEmpty("")
-                        .map(body -> new RoleplayAiException(
-                                "Gemini roleplay returned HTTP " + response.statusCode().value(),
-                                response.statusCode().is5xxServerError() || response.statusCode().value() == 429)))
+                        .map(body -> httpError(response.statusCode(), "roleplay response")))
                 .bodyToFlux(JsonNode.class)
                 .map(this::candidateText)
                 .filter(text -> !text.isEmpty())
-                .timeout(REQUEST_TIMEOUT)
+                .timeout(requestTimeout())
                 .retryWhen(Retry.max(1).filter(this::retryable))
-                .onErrorMap(error -> error instanceof RoleplayAiException
-                        ? error
-                        : new RoleplayAiException("Không thể nhận phản hồi TechTalk từ Gemini.", true, error));
+                .onErrorMap(error -> normalizedError(error, "Không thể nhận phản hồi TechTalk từ Gemini."));
     }
 
     @Override
@@ -109,17 +111,16 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
                 """.formatted(userMessage, compactScenario(context.scenario()), recentConversation);
         return generateStructured(prompt, turnEvaluationSchema())
                 .map(node -> parseTurnEvaluation(node, userMessage))
-                .onErrorMap(error -> error instanceof RoleplayAiException
-                        ? error
-                        : new RoleplayAiException("Gemini không thể đánh giá lượt hội thoại.", true, error));
+                .onErrorMap(error -> normalizedError(error, "Gemini không thể đánh giá lượt hội thoại."));
     }
 
     @Override
     public Mono<RoleplaySession.FinalEvaluation> evaluateSession(RoleplayContext context) {
         if (!configured()) return Mono.error(notConfigured());
-        String transcript = context.session().getMessages().stream()
+        String fullTranscript = context.session().getMessages().stream()
                 .map(message -> message.getRole() + ": " + message.getContent())
                 .reduce("", (left, right) -> left + "\n" + right);
+        String transcript = boundedFinalTranscript(fullTranscript, context.session().getId());
         String prompt = """
                 Evaluate whether the learner completed the workplace mission objectives. Base the taskCompletion
                 score only on evidence in the transcript. Return concise feedback in Korean and Vietnamese and
@@ -192,22 +193,23 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
                 .retrieve()
                 .onStatus(HttpStatusCode::isError, response -> response.bodyToMono(String.class)
                         .defaultIfEmpty("")
-                        .map(body -> new RoleplayAiException(
-                                "Gemini evaluation returned HTTP " + response.statusCode().value(),
-                                response.statusCode().is5xxServerError() || response.statusCode().value() == 429)))
+                        .map(body -> httpError(response.statusCode(), "evaluation")))
                 .bodyToMono(JsonNode.class)
-                .timeout(REQUEST_TIMEOUT)
+                .timeout(requestTimeout())
                 .retryWhen(Retry.max(1).filter(this::retryable))
-                .map(this::structuredCandidate);
+                .map(this::structuredCandidate)
+                .onErrorMap(error -> normalizedError(error, "Gemini không thể hoàn tất đánh giá."));
     }
 
     private JsonNode structuredCandidate(JsonNode response) {
         String text = candidateText(response);
-        if (text.isBlank()) throw new RoleplayAiException("Gemini returned no structured roleplay result.", true);
+        if (text.isBlank()) throw new RoleplayAiException(
+                "GEMINI_EMPTY_RESPONSE", "Gemini returned no structured roleplay result.", true);
         try {
             return objectMapper.readTree(text);
         } catch (JsonProcessingException exception) {
-            throw new RoleplayAiException("Gemini returned malformed roleplay JSON.", true, exception);
+            throw new RoleplayAiException(
+                    "GEMINI_INVALID_RESPONSE", "Gemini returned malformed roleplay JSON.", true, exception);
         }
     }
 
@@ -306,7 +308,7 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
             node.set("requiredVocabulary", objectMapper.valueToTree(scenario.getRequiredVocabulary()));
             return objectMapper.writeValueAsString(node);
         } catch (JsonProcessingException exception) {
-            throw new RoleplayAiException("Unable to prepare roleplay scenario.", false, exception);
+            throw new RoleplayAiException("GEMINI_REQUEST_BUILD_FAILED", "Unable to prepare roleplay scenario.", false, exception);
         }
     }
 
@@ -371,10 +373,63 @@ public class GeminiRoleplayProvider implements RoleplayAiProvider {
     }
 
     private RoleplayAiException notConfigured() {
-        return new RoleplayAiException("TechTalk AI chưa được cấu hình. Hãy thiết lập GEMINI_API_KEY.", false);
+        return new RoleplayAiException(
+                "GEMINI_NOT_CONFIGURED", "TechTalk AI chưa được cấu hình. Hãy thiết lập GEMINI_API_KEY.", false);
     }
 
     private boolean retryable(Throwable error) {
-        return !(error instanceof RoleplayAiException exception) || exception.isRetryable();
+        RoleplayAiException aiError = findAiError(error);
+        return aiError == null || aiError.isRetryable();
+    }
+
+    private Duration requestTimeout() {
+        return Duration.ofSeconds(Math.max(5, requestTimeoutSeconds));
+    }
+
+    private RoleplayAiException httpError(HttpStatusCode status, String operation) {
+        int value = status.value();
+        String code = value == 429 ? "GEMINI_RATE_LIMIT"
+                : status.is5xxServerError() ? "GEMINI_SERVER_ERROR"
+                : "GEMINI_HTTP_" + value;
+        return new RoleplayAiException(code, "Gemini " + operation + " returned HTTP " + value,
+                status.is5xxServerError() || value == 429);
+    }
+
+    private RoleplayAiException normalizedError(Throwable error, String message) {
+        RoleplayAiException existing = findAiError(error);
+        if (existing != null) return existing;
+        Throwable root = rootCause(error);
+        if (root instanceof TimeoutException) {
+            return new RoleplayAiException("GEMINI_TIMEOUT", message, true, error);
+        }
+        return new RoleplayAiException("GEMINI_NETWORK_ERROR", message, true, error);
+    }
+
+    private RoleplayAiException findAiError(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof RoleplayAiException aiError) return aiError;
+            if (current.getCause() == current) break;
+            current = current.getCause();
+        }
+        return null;
+    }
+
+    private Throwable rootCause(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null && current.getCause() != current) current = current.getCause();
+        return current;
+    }
+
+    private String boundedFinalTranscript(String transcript, String sessionId) {
+        int limit = Math.max(4_000, finalTranscriptMaxCharacters);
+        if (transcript.length() <= limit) return transcript;
+        int startLength = limit / 3;
+        int endLength = limit - startLength;
+        log.info("Truncated TechTalk final-evaluation transcript for session {} from {} to {} characters",
+                sessionId, transcript.length(), limit);
+        return transcript.substring(0, startLength)
+                + "\n[... middle of transcript omitted for evaluation ...]\n"
+                + transcript.substring(transcript.length() - endLength);
     }
 }

@@ -157,6 +157,7 @@ class MessageEvaluation {
     required this.objectives,
     required this.allObjectivesCompleted,
     required this.completionMessageKo,
+    this.errorCode,
   });
 
   final int grammar, vocabulary, politeness;
@@ -166,6 +167,7 @@ class MessageEvaluation {
   final List<ObjectiveResult> objectives;
   final bool allObjectivesCompleted;
   final String completionMessageKo;
+  final String? errorCode;
 
   factory MessageEvaluation.fromJson(Map<String, dynamic> json) =>
       MessageEvaluation(
@@ -183,6 +185,7 @@ class MessageEvaluation {
             : const [],
         allObjectivesCompleted: json['allObjectivesCompleted'] == true,
         completionMessageKo: json['completionMessageKo']?.toString() ?? '',
+        errorCode: json['errorCode']?.toString(),
         corrections: json['corrections'] is List
             ? (json['corrections'] as List)
                   .map(
@@ -350,12 +353,14 @@ class RoleplayFinalEvaluation {
     required this.feedback,
     required this.improvementAreas,
     required this.objectives,
+    this.evaluationErrorCode,
   });
 
   final int overallScore, grammar, vocabulary, politeness, taskCompletion;
   final String feedbackVi, feedback;
   final List<String> improvementAreas;
   final List<ObjectiveResult> objectives;
+  final String? evaluationErrorCode;
 
   factory RoleplayFinalEvaluation.fromJson(Map<String, dynamic> json) =>
       RoleplayFinalEvaluation(
@@ -373,6 +378,7 @@ class RoleplayFinalEvaluation {
                   .map((item) => ObjectiveResult.fromJson(_map(item)))
                   .toList()
             : const [],
+        evaluationErrorCode: json['evaluationErrorCode']?.toString(),
       );
 }
 

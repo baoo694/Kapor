@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/providers/settings_provider.dart';
 import 'data/techtalk_service.dart';
 import 'techtalk_strings.dart';
+import 'techtalk_transcript_screen.dart';
 
 class TechTalkResultScreen extends StatelessWidget {
   const TechTalkResultScreen({super.key, this.session});
@@ -70,6 +71,18 @@ class TechTalkResultScreen extends StatelessWidget {
                           height: 1.5,
                         ),
                       ),
+                      if (evaluation.evaluationErrorCode?.isNotEmpty == true)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            '${strings.technicalError}: ${evaluation.evaluationErrorCode}',
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.jetBrainsMono(
+                              fontSize: 10,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ),
+                        ),
                       if (evaluation.objectives.isNotEmpty) ...[
                         const SizedBox(height: 20),
                         Align(
@@ -125,6 +138,19 @@ class TechTalkResultScreen extends StatelessWidget {
                         ),
                       ],
                       const SizedBox(height: 24),
+                      if (session != null) ...[
+                        OutlinedButton.icon(
+                          onPressed: () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) =>
+                                  TechTalkTranscriptScreen(session: session!),
+                            ),
+                          ),
+                          icon: const Icon(Icons.chat_bubble_outline),
+                          label: Text(strings.viewTranscript),
+                        ),
+                        const SizedBox(height: 10),
+                      ],
                       ElevatedButton(
                         onPressed: () => context.go('/techtalk-select'),
                         child: Text(strings.anotherScenario),

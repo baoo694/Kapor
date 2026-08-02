@@ -772,7 +772,9 @@ class _TechTalkScreenState extends State<TechTalkScreen> {
       return Padding(
         padding: const EdgeInsets.only(top: 4),
         child: Text(
-          strings.evaluationUnavailable,
+          evaluation.feedbackVi.isEmpty
+              ? strings.evaluationUnavailable
+              : evaluation.feedbackVi,
           style: GoogleFonts.jetBrainsMono(
             fontSize: 9,
             color: AppTheme.textSecondary,

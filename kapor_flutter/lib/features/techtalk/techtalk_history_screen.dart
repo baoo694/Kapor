@@ -6,7 +6,6 @@ import 'package:provider/provider.dart';
 import '../../core/providers/settings_provider.dart';
 import '../../core/theme/app_theme.dart';
 import 'data/techtalk_service.dart';
-import 'techtalk_screen.dart';
 import 'techtalk_strings.dart';
 
 class TechTalkHistoryScreen extends StatefulWidget {
@@ -123,17 +122,9 @@ class _TechTalkHistoryScreenState extends State<TechTalkHistoryScreen> {
                     .firstOrNull;
                 return Card(
                   child: ListTile(
-                    leading: Icon(
-                      session.status == 'completed'
-                          ? Icons.check_circle
-                          : session.status == 'active'
-                          ? Icons.play_circle
-                          : Icons.cancel_outlined,
-                      color: session.status == 'completed'
-                          ? AppTheme.primary
-                          : session.status == 'active'
-                          ? AppTheme.secondary
-                          : AppTheme.textSecondary,
+                    leading: const Icon(
+                      Icons.check_circle,
+                      color: AppTheme.primary,
                     ),
                     title: Text(
                       scenario?.titleVi ??
@@ -141,34 +132,17 @@ class _TechTalkHistoryScreenState extends State<TechTalkHistoryScreen> {
                           session.scenarioId,
                     ),
                     subtitle: Text(
-                      '${_status(session.status, strings)} · '
+                      '${strings.completed} · '
                       '${session.messages.where((message) => message.role == 'user').length} turns'
-                      '${session.finalEvaluation == null ? '' : ' · ${session.finalEvaluation!.overallScore}/100'}',
+                      ' · ${session.finalEvaluation?.overallScore ?? 0}/100',
                       style: GoogleFonts.inter(
                         fontSize: 11,
                         color: AppTheme.textSecondary,
                       ),
                     ),
                     trailing: const Icon(Icons.chevron_right),
-                    onTap:
-                        session.status == 'active' && scenario == null ||
-                            session.status != 'active' &&
-                                session.finalEvaluation == null
-                        ? null
-                        : () {
-                            if (session.status == 'active' &&
-                                scenario != null) {
-                              context.push(
-                                '/techtalk-chat',
-                                extra: TechTalkChatArgs(
-                                  scenario: scenario,
-                                  session: session,
-                                ),
-                              );
-                            } else if (session.finalEvaluation != null) {
-                              context.push('/techtalk-result', extra: session);
-                            }
-                          },
+                    onTap: () =>
+                        context.push('/techtalk-result', extra: session),
                   ),
                 );
               },
@@ -178,12 +152,6 @@ class _TechTalkHistoryScreenState extends State<TechTalkHistoryScreen> {
       ),
     );
   }
-
-  String _status(String value, TechTalkStrings strings) => switch (value) {
-    'completed' => strings.completed,
-    'active' => strings.active,
-    _ => strings.abandoned,
-  };
 }
 
 class _HistoryData {

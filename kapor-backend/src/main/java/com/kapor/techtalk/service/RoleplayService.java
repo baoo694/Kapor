@@ -49,6 +49,9 @@ public class RoleplayService {
     @Value("${techtalk.session.test-retention-hours:24}")
     private int testRetentionHours;
 
+    @Value("${techtalk.ai.final-evaluation-timeout-seconds:100}")
+    private int finalEvaluationTimeoutSeconds;
+
     public List<TechTalkScenario> getScenarios() {
         return scenarioRepository.findByActiveTrueOrderByOrderAsc();
     }
@@ -144,9 +147,11 @@ public class RoleplayService {
                 .evaluateTurn(work.context(), request.getContent().trim())
                 .map(value -> normalizeObjectiveEvaluation(work.scenario(), work.session(), value))
                 .onErrorResume(error -> {
-                    metrics.increment("evaluation.errors");
-                    log.warn("TechTalk evaluation unavailable for turn {}: {}", work.turnId(), error.getMessage());
-                    return Mono.just(unavailableEvaluation());
+                    String code = errorCode(error);
+                    metrics.increment("evaluation.errors." + code.toLowerCase());
+                    log.warn("TechTalk evaluation unavailable for turn {} [code={}]: {}", work.turnId(), code,
+                            error.getMessage());
+                    return Mono.just(unavailableEvaluation(code));
                 })
                 .doOnNext(evaluation::set)
                 .cache();
@@ -244,12 +249,16 @@ public class RoleplayService {
             RoleplaySession.FinalEvaluation taskEvaluation;
             try {
                 taskEvaluation = aiProvider.evaluateSession(promptService.context(scenario, session))
-                        .block(Duration.ofSeconds(60));
+                        .block(Duration.ofSeconds(Math.max(10, finalEvaluationTimeoutSeconds)));
             } catch (RuntimeException exception) {
-                log.warn("Final TechTalk evaluator unavailable for {}: {}", sessionId, exception.getMessage());
-                taskEvaluation = degradedFinalEvaluation(session, evaluations.size());
+                String code = errorCode(exception);
+                metrics.increment("final_evaluation.errors." + code.toLowerCase());
+                log.warn("Final TechTalk evaluator unavailable for {} [code={}]: {}", sessionId, code,
+                        exception.getMessage());
+                taskEvaluation = degradedFinalEvaluation(session, evaluations.size(), code);
             }
-            if (taskEvaluation == null) taskEvaluation = degradedFinalEvaluation(session, evaluations.size());
+            if (taskEvaluation == null) taskEvaluation = degradedFinalEvaluation(
+                    session, evaluations.size(), "GEMINI_EMPTY_RESPONSE");
             taskEvaluation.setGrammar(grammar);
             taskEvaluation.setVocabulary(vocabulary);
             taskEvaluation.setPoliteness(politeness);
@@ -288,14 +297,14 @@ public class RoleplayService {
     }
 
     public List<RoleplaySession> history(String userId) {
-        return sessionRepository.findByUserIdAndTestModeFalseOrderByStartedAtDesc(userId);
+        return sessionRepository.findByUserIdAndTestModeFalseAndStatusOrderByStartedAtDesc(userId, "completed");
     }
 
     public RoleplayHistoryDto history(String userId, int page, int size) {
         int safePage = Math.max(0, page);
         int safeSize = Math.max(1, Math.min(50, size));
-        List<RoleplaySession> rows = sessionRepository.findByUserIdAndTestModeFalseOrderByStartedAtDesc(
-                userId, PageRequest.of(safePage, safeSize + 1));
+        List<RoleplaySession> rows = sessionRepository.findByUserIdAndTestModeFalseAndStatusOrderByStartedAtDesc(
+                userId, "completed", PageRequest.of(safePage, safeSize + 1));
         boolean hasMore = rows.size() > safeSize;
         if (hasMore) rows = new ArrayList<>(rows.subList(0, safeSize));
         return RoleplayHistoryDto.builder().content(rows).page(safePage).size(safeSize).hasMore(hasMore).build();
@@ -415,7 +424,7 @@ public class RoleplayService {
         synchronized (lock(sessionId)) {
             RoleplaySession session = ownedActiveSession(userId, sessionId);
             RoleplaySession.Message userMessage = message(session, work.userMessageId());
-            userMessage.setEvaluation(evaluation == null ? unavailableEvaluation() : evaluation);
+            userMessage.setEvaluation(evaluation == null ? unavailableEvaluation("GEMINI_UNKNOWN") : evaluation);
             boolean missionCompleted = evaluation != null && evaluation.isAllObjectivesCompleted()
                     && session.getObjectivesCompletedAt() == null;
             if (evaluation != null && "completed".equals(evaluation.getStatus())
@@ -583,20 +592,34 @@ public class RoleplayService {
                 : "모든 목표를 잘 완료하셨습니다. 수고하셨습니다.";
     }
 
-    private RoleplaySession.Evaluation unavailableEvaluation() {
+    private RoleplaySession.Evaluation unavailableEvaluation(String code) {
         return RoleplaySession.Evaluation.builder().status("unavailable")
-                .feedbackVi("Chưa thể chấm điểm lượt này. Hội thoại vẫn được tiếp tục.")
+                .errorCode(code)
+                .feedbackVi("Chưa thể chấm điểm lượt này. Mã kỹ thuật: " + code + ". Hội thoại vẫn được tiếp tục.")
                 .corrections(List.of()).usedRequiredVocabulary(List.of()).build();
     }
 
-    private RoleplaySession.FinalEvaluation degradedFinalEvaluation(RoleplaySession session, int evaluatedTurns) {
+    private RoleplaySession.FinalEvaluation degradedFinalEvaluation(
+            RoleplaySession session, int evaluatedTurns, String errorCode) {
         int completion = Math.min(100, evaluatedTurns * 20);
         return RoleplaySession.FinalEvaluation.builder()
                 .taskCompletion(completion)
                 .feedback("세션이 완료되었습니다.")
-                .feedbackVi("Phiên đã hoàn thành nhưng đánh giá nhiệm vụ AI tạm thời không khả dụng.")
+                .feedbackVi("Phiên đã hoàn thành nhưng đánh giá nhiệm vụ AI tạm thời không khả dụng. Mã kỹ thuật: "
+                        + errorCode + ".")
+                .evaluationErrorCode(errorCode)
                 .improvementAreas(List.of("Xem lại transcript và luyện lại các câu đã được sửa."))
                 .build();
+    }
+
+    private String errorCode(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof RoleplayAiException aiError) return aiError.getCode();
+            if (current.getCause() == current) break;
+            current = current.getCause();
+        }
+        return "GEMINI_UNKNOWN";
     }
 
     private int average(List<RoleplaySession.Evaluation> values, Metric metric) {

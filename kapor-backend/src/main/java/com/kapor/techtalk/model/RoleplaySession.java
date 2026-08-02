@@ -63,6 +63,7 @@ public class RoleplaySession {
         private int vocabulary;
         private int politeness;
         private String status;
+        private String errorCode;
         private String feedbackVi;
         @Builder.Default
         private List<Correction> corrections = new ArrayList<>();
@@ -104,6 +105,7 @@ public class RoleplaySession {
         private int taskCompletion;
         private String feedback;
         private String feedbackVi;
+        private String evaluationErrorCode;
         @Builder.Default
         private List<String> improvementAreas = new ArrayList<>();
         @Builder.Default
