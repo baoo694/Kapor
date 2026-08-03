@@ -19,6 +19,8 @@ public class VideoDto {
     private String thumbnailUrl;
     private String domain;
     private String difficulty;
+    @Builder.Default
+    private List<String> goalTags = new ArrayList<>();
     private Integer durationSeconds;
     @Builder.Default
     private List<Video.SubtitleLine> koreanSubtitles = new ArrayList<>();
@@ -38,6 +40,7 @@ public class VideoDto {
                 .thumbnailUrl(video.getThumbnailUrl())
                 .domain(video.getDomain())
                 .difficulty(video.getDifficulty())
+                .goalTags(video.getGoalTags())
                 .durationSeconds(video.getDurationSeconds())
                 .koreanSubtitles(video.getKoreanSubtitles())
                 .vietnameseSubtitles(video.getVietnameseSubtitles())

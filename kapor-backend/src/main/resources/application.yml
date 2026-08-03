@@ -64,6 +64,13 @@ password-reset:
 google:
   client-id: ${GOOGLE_CLIENT_ID:your-google-client-id}
 
+# FCM is optional in local development. Production enables it with a mounted
+# Firebase Admin service-account JSON file, never a client-side secret.
+firebase:
+  enabled: ${FIREBASE_ENABLED:false}
+  service-account-file: ${FIREBASE_SERVICE_ACCOUNT_FILE:}
+  reminder-cron: ${FIREBASE_REMINDER_CRON:0 */5 * * * *}
+
 # Gemini AI
 gemini:
   api-key: ${GEMINI_API_KEY:}

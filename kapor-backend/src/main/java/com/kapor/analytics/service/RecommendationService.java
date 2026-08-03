@@ -7,11 +7,14 @@ import com.kapor.devvocab.model.Topic;
 import com.kapor.devvocab.repository.TopicRepository;
 import com.kapor.membyte.repository.MembyteFlashcardRepository;
 import com.kapor.user.model.User;
+import com.kapor.user.model.LearningGoal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.Comparator;
+import java.util.List;
+import java.util.Set;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +25,7 @@ public class RecommendationService {
     private final TopicRepository topicRepository;
 
     public DashboardResponse.RecommendationCard generateRecommendation(User user) {
+        Set<String> goals = LearningGoal.normalize(user.getProfile() == null ? List.of() : user.getProfile().getLearningGoals());
         Instant now = Instant.now();
         int dueCards = (int) flashcardRepository.findByUserIdOrderByCreatedAtAsc(user.getId()).stream()
                 .filter(card -> !card.isNew() && card.getDueAt() != null && !card.getDueAt().isAfter(now))
@@ -39,6 +43,7 @@ public class RecommendationService {
         LearningProgress progress = learningProgressRepository.findByUserId(user.getId()).stream()
                 .filter(LearningProgress::isUnlocked)
                 .filter(item -> item.getTotalLessons() > 0 && item.getCompletedLessons() < item.getTotalLessons())
+                .filter(item -> topicRepository.findById(item.getTopicId()).map(topic -> matchesGoals(topic, goals)).orElse(false))
                 .max(Comparator.comparing(LearningProgress::getLastAccessedAt,
                         Comparator.nullsFirst(Comparator.naturalOrder())))
                 .orElse(null);
@@ -56,6 +61,7 @@ public class RecommendationService {
 
         Topic firstActiveTopic = topicRepository.findAllByOrderByOrderAsc().stream()
                 .filter(Topic::isActive)
+                .filter(topic -> matchesGoals(topic, goals))
                 .findFirst()
                 .orElse(null);
         if (firstActiveTopic != null) {
@@ -79,5 +85,14 @@ public class RecommendationService {
 
     private String title(Topic topic) {
         return topic.getTitleVi() == null || topic.getTitleVi().isBlank() ? topic.getTitle() : topic.getTitleVi();
+    }
+
+    private boolean matchesGoals(Topic topic, Set<String> goals) {
+        if (goals.isEmpty()) return true;
+        if (topic.getGoalTags() != null && topic.getGoalTags().stream().anyMatch(goals::contains)) return true;
+        // Existing DevVocab topics predate goal tags; they are still useful for
+        // learners who explicitly chose Korean IT terminology.
+        return goals.contains(LearningGoal.IT_TERMINOLOGY.value())
+                && topic.getDomain() != null && !topic.getDomain().isBlank();
     }
 }

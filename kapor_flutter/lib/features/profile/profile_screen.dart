@@ -14,7 +14,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  bool _notif = true;
   String _ttsSpeed = "1.0×";
   bool _showLogoutConfirm = false;
 
@@ -259,6 +258,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildSettingsSection() {
     final textColor = Theme.of(context).colorScheme.onBackground;
+    final auth = context.watch<AuthProvider>();
+    final userSettings = auth.user?['settings'];
+    final notificationsEnabled =
+        userSettings is Map && userSettings['notificationsEnabled'] is bool
+        ? userSettings['notificationsEnabled'] as bool
+        : true;
+    final reminderTime = userSettings is Map
+        ? userSettings['reminderTime']?.toString()
+        : null;
+    final dailyGoalMinutes =
+        userSettings is Map && userSettings['dailyGoalMinutes'] is num
+        ? (userSettings['dailyGoalMinutes'] as num).toInt()
+        : 15;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -307,14 +319,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                     GestureDetector(
-                      onTap: () => setState(() => _notif = !_notif),
+                      onTap: () => auth.updateSettings({
+                        'notificationsEnabled': !notificationsEnabled,
+                      }),
                       child: AnimatedContainer(
                         duration: const Duration(milliseconds: 200),
                         width: 42,
                         height: 24,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
-                          color: _notif ? _teal : textColor.withOpacity(0.2),
+                          color: notificationsEnabled
+                              ? _teal
+                              : textColor.withOpacity(0.2),
                         ),
                         child: Stack(
                           children: [
@@ -322,7 +338,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               duration: const Duration(milliseconds: 200),
                               curve: Curves.easeInOut,
                               top: 3,
-                              left: _notif ? 21 : 3,
+                              left: notificationsEnabled ? 21 : 3,
                               child: Container(
                                 width: 18,
                                 height: 18,
@@ -334,6 +350,101 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ),
                           ],
                         ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              _KCard(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                margin: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Mục tiêu mỗi ngày',
+                      style: GoogleFonts.inter(fontSize: 13, color: textColor),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        final selected = await showModalBottomSheet<int>(
+                          context: context,
+                          builder: (sheetContext) => SafeArea(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [5, 10, 15, 30]
+                                  .map(
+                                    (minutes) => ListTile(
+                                      title: Text('$minutes phút/ngày'),
+                                      trailing: minutes == dailyGoalMinutes
+                                          ? const Icon(
+                                              Icons.check,
+                                              color: Color(0xFF2DD4BF),
+                                            )
+                                          : null,
+                                      onTap: () =>
+                                          Navigator.pop(sheetContext, minutes),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ),
+                        );
+                        if (selected != null && mounted) {
+                          await auth.updateSettings({
+                            'dailyGoalMinutes': selected,
+                          });
+                        }
+                      },
+                      child: Text('${dailyGoalMinutes}m/ngày'),
+                    ),
+                  ],
+                ),
+              ),
+              _KCard(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                margin: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Nhắc học mỗi ngày',
+                      style: GoogleFonts.inter(fontSize: 13, color: textColor),
+                    ),
+                    TextButton(
+                      onPressed: notificationsEnabled
+                          ? () async {
+                              final now = TimeOfDay.now();
+                              final parsed = reminderTime?.split(':');
+                              final initial = parsed?.length == 2
+                                  ? TimeOfDay(
+                                      hour:
+                                          int.tryParse(parsed![0]) ?? now.hour,
+                                      minute:
+                                          int.tryParse(parsed[1]) ?? now.minute,
+                                    )
+                                  : now;
+                              final selected = await showTimePicker(
+                                context: context,
+                                initialTime: initial,
+                              );
+                              if (selected == null || !mounted) return;
+                              await auth.updateSettings({
+                                'reminderTime':
+                                    '${selected.hour.toString().padLeft(2, '0')}:${selected.minute.toString().padLeft(2, '0')}',
+                              });
+                            }
+                          : null,
+                      child: Text(
+                        reminderTime?.isNotEmpty == true
+                            ? reminderTime!
+                            : 'Chọn giờ',
                       ),
                     ),
                   ],

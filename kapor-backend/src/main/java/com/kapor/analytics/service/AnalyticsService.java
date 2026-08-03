@@ -69,13 +69,34 @@ public class AnalyticsService {
                 .roleplayScore(roleplay.value)
                 .build();
 
+        DashboardResponse.DailyGoal dailyGoal = dailyGoal(user, today);
+
         // 3. Smart Recommendation
         DashboardResponse.RecommendationCard recommendation = recommendationService.generateRecommendation(user);
 
         return DashboardResponse.builder()
                 .streak(streakInfo)
                 .progress(progress)
+                .dailyGoal(dailyGoal)
                 .recommendation(recommendation)
+                .build();
+    }
+
+    public DashboardResponse.DailyGoal getDailyGoal(String userId, Integer timezoneOffsetMinutes) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User", "id", userId));
+        return dailyGoal(user, today(timezoneOffsetMinutes));
+    }
+
+    private DashboardResponse.DailyGoal dailyGoal(User user, LocalDate date) {
+        DailyActivity activity = dailyActivityRepository.findByUserIdAndDate(user.getId(), date).orElse(null);
+        int studiedMinutes = activity == null ? 0 : activity.getMinutesStudied();
+        int targetMinutes = user.getSettings() == null ? 15 : Math.max(1, user.getSettings().getDailyGoalMinutes());
+        return DashboardResponse.DailyGoal.builder()
+                .targetMinutes(targetMinutes)
+                .studiedMinutes(studiedMinutes)
+                .percentComplete(Math.min(100, Math.round(studiedMinutes * 100f / targetMinutes)))
+                .completed(studiedMinutes >= targetMinutes)
                 .build();
     }
 

@@ -31,4 +31,12 @@ public class AnalyticsController {
         
         return ResponseEntity.ok(ApiResponse.ok(response));
     }
+
+    @GetMapping("/daily-goal")
+    public ResponseEntity<ApiResponse<DashboardResponse.DailyGoal>> getDailyGoal(
+            Authentication authentication,
+            @RequestHeader(value = "X-Timezone-Offset-Minutes", required = false) Integer timezoneOffsetMinutes) {
+        String userId = ((com.kapor.auth.security.CustomUserDetails) authentication.getPrincipal()).getUser().getId();
+        return ResponseEntity.ok(ApiResponse.ok(analyticsService.getDailyGoal(userId, timezoneOffsetMinutes)));
+    }
 }

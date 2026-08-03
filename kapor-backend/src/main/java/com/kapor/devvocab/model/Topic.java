@@ -30,6 +30,10 @@ public class Topic {
     private List<String> prerequisiteTopicIds; // For skill tree unlocking
     
     private List<String> tags;
+
+    /** Onboarding goal identifiers for personalized discovery and recommendations. */
+    @Builder.Default
+    private List<String> goalTags = java.util.List.of();
     
     private boolean isActive;
 }

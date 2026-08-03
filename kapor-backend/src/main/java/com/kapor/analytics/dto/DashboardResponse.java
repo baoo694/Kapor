@@ -13,6 +13,7 @@ public class DashboardResponse {
     
     private StreakInfo streak;
     private ProgressMetrics progress;
+    private DailyGoal dailyGoal;
     private RecommendationCard recommendation;
 
     @Data
@@ -37,6 +38,17 @@ public class DashboardResponse {
         private int vocabulary; // 0-100
         private int listening; // 0-100
         private int roleplayScore; // 0-100
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DailyGoal {
+        private int targetMinutes;
+        private int studiedMinutes;
+        private int percentComplete;
+        private boolean completed;
     }
 
     @Data

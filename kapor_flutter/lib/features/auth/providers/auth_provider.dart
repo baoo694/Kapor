@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../data/auth_service.dart';
 import '../data/google_sign_in_service.dart';
+import '../../../core/notifications/push_notification_service.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
@@ -97,6 +100,7 @@ class AuthProvider extends ChangeNotifier {
     await prefs.setString('refresh_token', refreshToken);
     _user = Map<String, dynamic>.from(user);
     _isAuthenticated = true;
+    unawaited(PushNotificationService.instance.registerCurrentDevice());
   }
 
   Future<void> register(String name, String email, String password) async {
@@ -162,6 +166,17 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> updateSettings(Map<String, dynamic> changes) async {
+    final current = _user?['settings'];
+    final settings = <String, dynamic>{
+      if (current is Map) ...Map<String, dynamic>.from(current),
+      ...changes,
+    };
+    final updated = await _authService.updateSettings(settings);
+    _user = updated;
+    notifyListeners();
+  }
+
   bool get hasCompletedOnboarding {
     if (_user != null) {
       return _user!['hasCompletedOnboarding'] == true;
@@ -176,6 +191,9 @@ class AuthProvider extends ChangeNotifier {
     }
     try {
       _user = await _authService.getCurrentUser();
+      if (_isAuthenticated) {
+        unawaited(PushNotificationService.instance.registerCurrentDevice());
+      }
     } catch (e) {
       debugPrint('Error fetching user profile: $e');
     } finally {

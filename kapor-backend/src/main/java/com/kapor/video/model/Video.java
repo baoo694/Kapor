@@ -28,6 +28,8 @@ public class Video {
     private String thumbnailUrl;
     private String domain;
     private String difficulty;
+    @Builder.Default
+    private List<String> goalTags = new ArrayList<>();
     private Integer durationSeconds;
     @Builder.Default
     private List<SubtitleLine> koreanSubtitles = new ArrayList<>();

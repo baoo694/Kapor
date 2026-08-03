@@ -60,6 +60,7 @@ public class VideoService {
                 .thumbnailUrl(dto.getThumbnailUrl())
                 .domain(dto.getDomain())
                 .difficulty(dto.getDifficulty())
+                .goalTags(dto.getGoalTags())
                 .durationSeconds(dto.getDurationSeconds())
                 .koreanSubtitles(dto.getKoreanSubtitles())
                 .vietnameseSubtitles(dto.getVietnameseSubtitles())
@@ -79,6 +80,7 @@ public class VideoService {
         video.setThumbnailUrl(dto.getThumbnailUrl());
         video.setDomain(dto.getDomain());
         video.setDifficulty(dto.getDifficulty());
+        video.setGoalTags(dto.getGoalTags());
         video.setDurationSeconds(dto.getDurationSeconds());
         video.setKoreanSubtitles(dto.getKoreanSubtitles());
         video.setVietnameseSubtitles(dto.getVietnameseSubtitles());

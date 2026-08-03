@@ -26,6 +26,8 @@ public class TechTalkScenario {
     private String titleVi;
     private String domain;
     private String difficulty;
+    @Builder.Default
+    private List<String> goalTags = new ArrayList<>();
     private Integer order;
     private Persona persona;
     /** Legacy Vietnamese summary retained for existing mobile clients. */

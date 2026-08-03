@@ -86,15 +86,39 @@ class DashboardRecommendation {
       );
 }
 
+class DashboardDailyGoal {
+  const DashboardDailyGoal({
+    required this.targetMinutes,
+    required this.studiedMinutes,
+    required this.percentComplete,
+    required this.completed,
+  });
+
+  final int targetMinutes;
+  final int studiedMinutes;
+  final int percentComplete;
+  final bool completed;
+
+  factory DashboardDailyGoal.fromJson(Map<String, dynamic>? json) =>
+      DashboardDailyGoal(
+        targetMinutes: (json?['targetMinutes'] as num?)?.toInt() ?? 15,
+        studiedMinutes: (json?['studiedMinutes'] as num?)?.toInt() ?? 0,
+        percentComplete: (json?['percentComplete'] as num?)?.toInt() ?? 0,
+        completed: json?['completed'] == true,
+      );
+}
+
 class DashboardData {
   const DashboardData({
     required this.streak,
     required this.progress,
+    required this.dailyGoal,
     required this.recommendation,
   });
 
   final DashboardStreak streak;
   final DashboardProgress progress;
+  final DashboardDailyGoal dailyGoal;
   final DashboardRecommendation? recommendation;
 
   factory DashboardData.fromJson(Map<String, dynamic> json) {
@@ -107,6 +131,11 @@ class DashboardData {
     return DashboardData(
       streak: DashboardStreak.fromJson(Map<String, dynamic>.from(streak)),
       progress: DashboardProgress.fromJson(Map<String, dynamic>.from(progress)),
+      dailyGoal: DashboardDailyGoal.fromJson(
+        json['dailyGoal'] is Map
+            ? Map<String, dynamic>.from(json['dailyGoal'] as Map)
+            : null,
+      ),
       recommendation: recommendation is Map
           ? DashboardRecommendation.fromJson(
               Map<String, dynamic>.from(recommendation),

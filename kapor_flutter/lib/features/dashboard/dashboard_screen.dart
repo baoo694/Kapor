@@ -142,6 +142,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
           children: [
             _buildStreakCard(dashboard.streak),
             const SizedBox(height: 16),
+            _buildDailyGoalCard(dashboard.dailyGoal),
+            const SizedBox(height: 16),
             _buildProgressCard(dashboard.progress),
             const SizedBox(height: 16),
             if (dashboard.recommendation != null)
@@ -401,6 +403,93 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // A recommendation opens as a detail flow. Keep Dashboard in the stack so
     // the review screen's back button returns the user to where they started.
     context.push(destination.toString());
+  }
+
+  Widget _buildDailyGoalCard(DashboardDailyGoal goal) {
+    final progress = (goal.percentComplete.clamp(0, 100) / 100).toDouble();
+    final remaining = (goal.targetMinutes - goal.studiedMinutes).clamp(
+      0,
+      goal.targetMinutes,
+    );
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: goal.completed
+              ? const Color(0xFF00BFA5).withValues(alpha: 0.42)
+              : Colors.white.withValues(alpha: 0.05),
+        ),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF00BFA5).withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: const Icon(
+                  LucideIcons.target,
+                  color: Color(0xFF2DD4BF),
+                  size: 19,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Mục tiêu hôm nay',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontFamily: 'Outfit',
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      goal.completed
+                          ? 'Bạn đã hoàn thành mục tiêu hôm nay!'
+                          : 'Còn $remaining phút để hoàn thành mục tiêu',
+                      style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Text(
+                '${goal.studiedMinutes}/${goal.targetMinutes}m',
+                style: const TextStyle(
+                  color: Color(0xFF2DD4BF),
+                  fontFamily: 'JetBrains Mono',
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: Colors.white.withValues(alpha: 0.08),
+              valueColor: const AlwaysStoppedAnimation(Color(0xFF00D4E7)),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildProgressCard(DashboardProgress progress) {

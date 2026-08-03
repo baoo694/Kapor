@@ -57,4 +57,23 @@ class AnalyticsServiceTest {
         assertThat(response.getProgress().getVocabulary()).isEqualTo(88);
         verify(dailyActivityRepository).findByUserIdOrderByDateAsc(user.getId());
     }
+
+    @Test
+    void calculatesDailyGoalUsingTodayStudyMinutes() {
+        User user = User.builder().id("user-1").build();
+        user.setStreak(User.Streak.builder().build());
+        user.setSettings(User.UserSettings.builder().dailyGoalMinutes(10).build());
+        DailyActivity activity = DailyActivity.builder().userId(user.getId()).date(LocalDate.now())
+                .minutesStudied(7).build();
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(dailyActivityRepository.findByUserIdOrderByDateAsc(user.getId())).thenReturn(List.of(activity));
+        when(dailyActivityRepository.findByUserIdAndDate(user.getId(), LocalDate.now())).thenReturn(Optional.of(activity));
+
+        DashboardResponse response = analyticsService.getDashboardData(user.getId(), "weekly", 420);
+
+        assertThat(response.getDailyGoal().getTargetMinutes()).isEqualTo(10);
+        assertThat(response.getDailyGoal().getStudiedMinutes()).isEqualTo(7);
+        assertThat(response.getDailyGoal().getPercentComplete()).isEqualTo(70);
+        assertThat(response.getDailyGoal().isCompleted()).isFalse();
+    }
 }

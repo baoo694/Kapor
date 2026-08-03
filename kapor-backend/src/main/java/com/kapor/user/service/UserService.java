@@ -4,6 +4,7 @@ import com.kapor.common.exception.ResourceNotFoundException;
 import com.kapor.user.dto.UserDto;
 import com.kapor.user.dto.UserUpdateRequest;
 import com.kapor.user.model.User;
+import com.kapor.user.model.LearningGoal;
 import com.kapor.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -42,7 +43,7 @@ public class UserService {
 
         if (user.getProfile() == null) user.setProfile(new User.Profile());
         if (request.getLearningGoals() != null) {
-            user.getProfile().setLearningGoals(request.getLearningGoals());
+            user.getProfile().setLearningGoals(LearningGoal.normalize(request.getLearningGoals()).stream().toList());
         }
 
         if (user.getSettings() == null) user.setSettings(new User.UserSettings());

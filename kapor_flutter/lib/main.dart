@@ -5,10 +5,12 @@ import 'core/theme/app_theme.dart';
 import 'core/router/app_router.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'core/providers/settings_provider.dart';
+import 'core/notifications/push_notification_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppEnvironment.load();
+  await PushNotificationService.instance.initialize();
   runApp(
     MultiProvider(
       providers: [

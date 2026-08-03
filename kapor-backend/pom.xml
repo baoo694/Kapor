@@ -112,6 +112,13 @@
             <version>${minio.version}</version>
         </dependency>
 
+        <!-- Firebase Cloud Messaging for scheduled learner reminders. -->
+        <dependency>
+            <groupId>com.google.firebase</groupId>
+            <artifactId>firebase-admin</artifactId>
+            <version>9.10.0</version>
+        </dependency>
+
         <!-- Safe, server-side extraction of public article text for SmartSummarizer. -->
         <dependency>
             <groupId>org.jsoup</groupId>

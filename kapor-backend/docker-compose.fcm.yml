@@ -1,0 +1,5 @@
+# Production-only override. Keep the service-account JSON outside Git.
+services:
+  kapor-api:
+    volumes:
+      - ${FIREBASE_SERVICE_ACCOUNT_HOST_PATH}:/run/secrets/kapor-firebase-admin.json:ro

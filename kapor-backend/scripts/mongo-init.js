@@ -58,6 +58,10 @@ db.roleplay_sessions.createIndex({ "messages.clientTurnId": 1 });
 db.roleplay_audio_assets.createIndex({ expiresAt: 1 });
 db.roleplay_audio_assets.createIndex({ userId: 1, sessionId: 1, _id: 1 });
 
+// Firebase Cloud Messaging device registrations
+db.fcm_device_tokens.createIndex({ token: 1 }, { unique: true });
+db.fcm_device_tokens.createIndex({ userId: 1, enabled: 1 });
+
 // Pronunciation
 db.pronunciation_exercises.createIndex({ domain: 1, difficulty: 1 });
 db.pronunciation_attempts.createIndex({ userId: 1, exerciseId: 1 });
